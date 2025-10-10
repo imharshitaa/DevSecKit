@@ -1,0 +1,11 @@
+rules:
+  - id: hardcoded-password
+    message: Avoid hardcoded credentials
+    severity: ERROR
+    languages: [python, javascript]
+    pattern: password = "$PASSWORD"
+
+
+
+
+
