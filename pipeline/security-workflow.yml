@@ -1,35 +1,17 @@
-name: Security Scans
-
+name: DevSecKit Scan
 on: [push, pull_request]
-
 jobs:
-  sast:
+  scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
-          config: "auto"
-
-      - name: Run Bandit
-        run: |
-          pip install bandit
-          bandit -r . 
-
-  sca:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          ignore-unfixed: true
-          format: 'table'
-
-      - name: Run Dependency-Check
-        run: |
-          docker pull owasp/dependency-check
-          docker run --rm -v ${{ github.workspace }}:/src owasp/dependency-check \
-            --scan /src --format "table"
+          python-version: 3.x
+      - name: Install Tools
+        run: pip install semgrep bandit safety pip-audit
+      - name: Run SAST
+        run: semgrep --config p/ci .
+      - name: Run SCA
+        run: pip-audit
