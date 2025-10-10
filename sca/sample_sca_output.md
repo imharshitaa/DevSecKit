@@ -15,8 +15,8 @@ chmod +x sca/run_sca.sh
 ```
 ```
 sudo apt update && sudo apt install -y python3 python3-venv 
-python3 -m venv ~/sast-venv
-source ~/sast-venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 ```
 ```
 pip install safety pip-audit
