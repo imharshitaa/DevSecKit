@@ -1,0 +1,35 @@
+name: Security Scans
+
+on: [push, pull_request]
+
+jobs:
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: "auto"
+
+      - name: Run Bandit
+        run: |
+          pip install bandit
+          bandit -r . 
+
+  sca:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'table'
+
+      - name: Run Dependency-Check
+        run: |
+          docker pull owasp/dependency-check
+          docker run --rm -v ${{ github.workspace }}:/src owasp/dependency-check \
+            --scan /src --format "table"
