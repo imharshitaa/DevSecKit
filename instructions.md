@@ -1,57 +1,44 @@
 # STEPS TO RUN THE TEST SCANS
 
-Install Tools on Terminal
+Clone this repository
 
-```bash
-# 1. Update system
-sudo apt update && sudo apt install -y python3 python3-venv python3-pip docker.io git
-
-# 2. Setup Python virtual environment
-python3 -m venv ~/sast-venv
-source ~/sast-venv/bin/activate
-
-# 3. Install SAST tools
-pip install semgrep bandit
-
-# 4. Install SCA tools
-sudo apt install -y trivy
-docker pull owasp/dependency-check
+```
+git clone https://github.com/imharshitaa/DevSecKit.git
+cd DevSecKit
 ```
 
-SAST setup
+Set up your environment
 
-```bash
-bash sast/run_sast.sh /path/to/target-repo
 ```
-
-SCA Setup
-
-```bash
-bash sca/run_sca.sh /path/to/target-repo
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip git
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-Running on TERMINAL
--
+Install dependencies
 
-1. Clone your target project
 ```
-git clone https://github.com/example/target-repo.git ~/target-repo
+pip install semgrep bandit safety pip-audit
 ```
 
-2. Activate Python venv for SAST:
+Make scripts executable
 ```
-source ~/sast-venv/bin/activate
-```
-
-3. Run SAST scan
-```
-bash ~/security-scanner/sast/run_sast.sh ~/target-repo
+chmod +x sast/run_sast.sh
+chmod +x sca/run_sca.sh
 ```
 
-4. Run SCA scan
+Clone target repository
 ```
-bash ~/security-scanner/sca/run_sca.sh ~/target-repo
+git clone https://github.com/psf/requests.git ~/requests
 ```
+
+Run scans on a target repository
+```
+bash sast/run_sast.sh ~/requests
+bash sca/run_sca.sh ~/requests
+```
+
 
 
 
