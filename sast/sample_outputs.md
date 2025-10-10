@@ -14,11 +14,10 @@ chmod +x sast/run_sast.sh
 chmod +x sca/run_sca.sh
 ```
 ```
-sudo apt update && sudo apt install -y python3 python3-venv python3-pip docker.io git trivy
+sudo apt update && sudo apt install -y python3 python3-venv 
 python3 -m venv ~/sast-venv
 source ~/sast-venv/bin/activate
 pip install semgrep bandit
-docker pull owasp/dependency-check
 ```
 ```
 git clone https://github.com/psf/requests.git ~/requests
