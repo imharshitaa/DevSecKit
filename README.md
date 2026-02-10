@@ -18,10 +18,10 @@ Security analysis categories:
 
 | Security Category | Tool                   | Target          | Scanner Script                      |
 | ----------------- | ---------------------- | --------------- | ----------------------------------- |
-| **SAST**          | Semgrep                | Source code     | `scanners/sast/semgrep_scan.sh`     |
-| **SCA**           | OWASP Dependency-Check | Dependencies    | `scanners/sca/dependency_check.sh`  |
-| **Secrets**       | Gitleaks               | Repo files      | `scanners/secrets/gitleaks_scan.sh` |
-| **DAST**          | OWASP ZAP              | Running web app | `scanners/dast/zap_scan.sh`         |
+| **SAST**          | Semgrep                | Source code     | `scanners/sast/semgrep.sh`     |
+| **SCA**           | OWASP Dependency-Check | Dependencies    | `scanners/sca/dependencycheck.sh`  |
+| **Secrets**       | Gitleaks               | Repo files      | `scanners/secrets/gitleaks.sh` |
+| **DAST**          | OWASP ZAP              | Running web app | `scanners/dast/zap.sh`         |
 
 
 ---
