@@ -1,0 +1,51 @@
+name: DevSecKit Security Analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: "Security analysis type"
+        required: true
+        type: choice
+        options:
+          - sast
+          - sca
+          - secrets
+          - dast
+      target:
+        description: "Scan target (repo path or URL for DAST)"
+        required: true
+        default: "."
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Make scanner scripts executable
+      run: chmod +x scanners/**/**/*.sh
+
+    - name: Run SAST
+      if: ${{ github.event.inputs.scan_type == 'sast' }}
+      run: scanners/sast/semgrep_scan.sh ${{ github.event.inputs.target }}
+
+    - name: Run SCA
+      if: ${{ github.event.inputs.scan_type == 'sca' }}
+      run: scanners/sca/dependency_check.sh ${{ github.event.inputs.target }}
+
+    - name: Run Secrets Scan
+      if: ${{ github.event.inputs.scan_type == 'secrets' }}
+      run: scanners/secrets/gitleaks_scan.sh ${{ github.event.inputs.target }}
+
+    - name: Run DAST
+      if: ${{ github.event.inputs.scan_type == 'dast' }}
+      run: scanners/dast/zap_scan.sh ${{ github.event.inputs.target }}
+
+    - name: Upload reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: devseckit-reports
+        path: reports/
