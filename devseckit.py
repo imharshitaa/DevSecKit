@@ -799,7 +799,8 @@ def main() -> int:
         expanded: list[str] = []
         for key in requested_scans:
             if key == "sca":
-                expanded.extend(["sca", "sca_trivy"])
+                # Run Trivy first for fast actionable output, then Dependency-Check.
+                expanded.extend(["sca_trivy", "sca"])
             elif key == "secrets":
                 expanded.extend(["secrets", "secrets_trufflehog"])
             else:

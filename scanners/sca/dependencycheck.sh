@@ -8,6 +8,7 @@ DC_NO_UPDATE=${DC_NO_UPDATE:-auto}
 PROJECT_NAME=${PROJECT_NAME:-devseckit-target}
 DC_DATA_DIR=${DC_DATA_DIR:-$OUT_DIR/.cache/dependency-check-data}
 DC_EXCLUDES=${DC_EXCLUDES:-node_modules,dist,build,.venv,venv,.git,targets,reports}
+DC_TIMEOUT_SECONDS=${DC_TIMEOUT_SECONDS:-900}
 
 if [[ -z "$TARGET" ]]; then
   echo "Usage: $0 <target_path> [out_dir]"
@@ -28,6 +29,7 @@ DATA_ABS=$(cd "$DC_DATA_DIR" && pwd -P)
 echo "[INFO] SCA target: $TARGET_ABS"
 echo "[INFO] Output directory: $OUT_ABS"
 echo "[INFO] Dependency-Check data dir: $DATA_ABS"
+echo "[INFO] Timeout seconds: $DC_TIMEOUT_SECONDS"
 
 IFS=',' read -r -a EXCLUDE_LIST <<< "$DC_EXCLUDES"
 EXCLUDE_ARGS=()
@@ -68,10 +70,21 @@ if [[ "$USE_NO_UPDATE" == "true" ]]; then
   DC_ARGS+=(--noupdate)
 fi
 
+TIMEOUT_BIN=""
+if command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_BIN="timeout"
+elif command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_BIN="gtimeout"
+fi
+
 if command -v dependency-check >/dev/null 2>&1; then
   echo "[INFO] Running Dependency-Check via local binary"
   set +e
-  dependency-check "${DC_ARGS[@]}"
+  if [[ -n "$TIMEOUT_BIN" ]]; then
+    "$TIMEOUT_BIN" "$DC_TIMEOUT_SECONDS" dependency-check "${DC_ARGS[@]}"
+  else
+    dependency-check "${DC_ARGS[@]}"
+  fi
   SCAN_RC=$?
   set -e
 elif command -v docker >/dev/null 2>&1; then
@@ -87,11 +100,19 @@ elif command -v docker >/dev/null 2>&1; then
     DOCKER_ARGS+=(--noupdate)
   fi
   set +e
-  docker run --rm \
-    -v "$TARGET_ABS:/src:ro" \
-    -v "$OUT_ABS:/report" \
-    -v "$DATA_ABS:/usr/share/dependency-check/data" \
-    "$DC_IMAGE" "${DOCKER_ARGS[@]}"
+  if [[ -n "$TIMEOUT_BIN" ]]; then
+    "$TIMEOUT_BIN" "$DC_TIMEOUT_SECONDS" docker run --rm \
+      -v "$TARGET_ABS:/src:ro" \
+      -v "$OUT_ABS:/report" \
+      -v "$DATA_ABS:/usr/share/dependency-check/data" \
+      "$DC_IMAGE" "${DOCKER_ARGS[@]}"
+  else
+    docker run --rm \
+      -v "$TARGET_ABS:/src:ro" \
+      -v "$OUT_ABS:/report" \
+      -v "$DATA_ABS:/usr/share/dependency-check/data" \
+      "$DC_IMAGE" "${DOCKER_ARGS[@]}"
+  fi
   SCAN_RC=$?
   set -e
 else
@@ -108,6 +129,11 @@ if [[ ${SCAN_RC:-1} -ne 0 && -n "$LATEST_REPORT" && -s "$LATEST_REPORT" ]]; then
 fi
 
 if [[ ${SCAN_RC:-1} -ne 0 ]]; then
+  if [[ ${SCAN_RC:-1} -eq 124 ]]; then
+    echo "[ERROR] Dependency-Check timed out after ${DC_TIMEOUT_SECONDS}s."
+    echo "[HINT] Increase timeout: DC_TIMEOUT_SECONDS=1800 ./devseckit.py"
+    exit "$SCAN_RC"
+  fi
   echo "[ERROR] Dependency-Check failed (exit ${SCAN_RC})."
   if [[ "$USE_NO_UPDATE" == "true" && "$HAS_DB_CACHE" != "true" ]]; then
     echo "[HINT] No local DB cache found. Re-run with DC_NO_UPDATE=false for initial DB download."
