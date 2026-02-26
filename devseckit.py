@@ -235,7 +235,11 @@ def preflight(selected: list[str], scan_defs: dict[str, ScanDef]) -> tuple[list[
 
     for key in selected:
         scan = scan_defs[key]
-        missing = [cmd for cmd in scan.required_cmds if shutil.which(cmd) is None]
+        missing: list[str] = []
+        for req in scan.required_cmds:
+            choices = [c.strip() for c in req.split("|") if c.strip()]
+            if not any(shutil.which(choice) is not None for choice in choices):
+                missing.append(req)
         if missing:
             skipped.append(key)
             print(c(f"[SKIP] {scan.name}", Color.YELLOW))
@@ -297,8 +301,8 @@ def main() -> int:
             False,
             "reports/semgrep.json",
             parse_semgrep,
-            ["semgrep"],
-            "pipx install semgrep",
+            ["semgrep|docker"],
+            "Install Semgrep (`pipx install semgrep`) or run with Docker available.",
         ),
         "sca": ScanDef(
             "sca",
@@ -307,8 +311,8 @@ def main() -> int:
             False,
             "reports/dependency-check-report.json",
             parse_dependency_check,
-            ["dependency-check"],
-            "Install OWASP Dependency-Check and ensure `dependency-check` is on PATH.",
+            ["dependency-check|docker"],
+            "Install OWASP Dependency-Check or use Docker (`owasp/dependency-check` image).",
         ),
         "secrets": ScanDef(
             "secrets",
@@ -317,8 +321,8 @@ def main() -> int:
             False,
             "reports/gitleaks.json",
             parse_gitleaks,
-            ["gitleaks"],
-            "Install Gitleaks from https://github.com/gitleaks/gitleaks/releases",
+            ["gitleaks|docker"],
+            "Install Gitleaks or use Docker (`ghcr.io/gitleaks/gitleaks`).",
         ),
         "iac": ScanDef(
             "iac",
@@ -327,8 +331,8 @@ def main() -> int:
             False,
             "reports/checkov.json",
             parse_checkov,
-            ["checkov"],
-            "pipx install checkov",
+            ["checkov|docker"],
+            "Install Checkov (`pipx install checkov`) or use Docker (`bridgecrew/checkov`).",
         ),
         "dast": ScanDef(
             "dast",
@@ -347,8 +351,8 @@ def main() -> int:
             True,
             "reports/iast-lite.json",
             parse_iast,
-            ["python3", "curl"],
-            "Install Python 3 and curl.",
+            ["python3"],
+            "Install Python 3.",
         ),
     }
 
