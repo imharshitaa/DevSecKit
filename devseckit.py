@@ -288,7 +288,20 @@ def parse_checkov(report_path: Path) -> list[Finding]:
         return []
     data = json.loads(report_path.read_text(encoding="utf-8"))
     findings: list[Finding] = []
-    checks = data.get("results", {}).get("failed_checks", [])
+    checks: list[dict] = []
+
+    if isinstance(data, dict):
+        checks = data.get("results", {}).get("failed_checks", []) or []
+    elif isinstance(data, list):
+        for section in data:
+            if not isinstance(section, dict):
+                continue
+            section_results = section.get("results", {})
+            if isinstance(section_results, dict):
+                section_failed = section_results.get("failed_checks", []) or []
+                if isinstance(section_failed, list):
+                    checks.extend([c for c in section_failed if isinstance(c, dict)])
+
     for item in checks:
         sev = normalize_severity(item.get("severity", "MEDIUM"))
         title = item.get("check_name", item.get("check_id", "IaC issue"))

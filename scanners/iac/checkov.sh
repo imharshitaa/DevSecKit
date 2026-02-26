@@ -20,24 +20,33 @@ TARGET_ABS=$(cd "$TARGET" && pwd -P)
 REPORT_DIR=$(cd "$(dirname "$REPORT")" && pwd -P)
 REPORT_FILE=$(basename "$REPORT")
 REPORT_ABS="$REPORT_DIR/$REPORT_FILE"
+TMP_REPORT="$REPORT_ABS.tmp"
 
 echo "[INFO] IaC target: $TARGET_ABS"
 echo "[INFO] Report: $REPORT_ABS"
 
 if command -v checkov >/dev/null 2>&1; then
   echo "[INFO] Running Checkov via local binary"
-  checkov -d "$TARGET_ABS" -o json --soft-fail > "$REPORT_ABS"
+  checkov -d "$TARGET_ABS" -o json --soft-fail > "$TMP_REPORT"
 elif command -v docker >/dev/null 2>&1; then
   echo "[INFO] Running Checkov via Docker image: $CHECKOV_IMAGE"
   docker run --rm \
     -v "$TARGET_ABS:/src:ro" \
     -v "$REPORT_DIR:/out" \
-    "$CHECKOV_IMAGE" -d /src -o json --soft-fail > "$REPORT_ABS"
+    "$CHECKOV_IMAGE" -d /src -o json --soft-fail > "$TMP_REPORT"
 else
   echo "[ERROR] checkov or docker is required."
   echo "[HINT] Install Checkov: pipx install checkov"
   exit 1
 fi
+
+if [[ ! -s "$TMP_REPORT" ]]; then
+  rm -f "$TMP_REPORT"
+  echo "[ERROR] Checkov did not produce a valid report."
+  exit 1
+fi
+
+mv "$TMP_REPORT" "$REPORT_ABS"
 
 if command -v python3 >/dev/null 2>&1; then
   COUNT=$(python3 - "$REPORT_ABS" <<'PY'
