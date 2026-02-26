@@ -35,13 +35,17 @@ def c(text: str, color: str) -> str:
 @dataclass
 class Finding:
     scan_type: str
+    rule_id: str
+    rule_name: str
+    message: str
     severity: str
+    confidence: str
     target: str
-    issue: str
-    location: str
+    file_path: str
+    line_number: str
+    code_snippet: str
     why_risky: str
-    mitigation: str
-    evidence: str
+    remediation_guidance: str
     references: list[str]
 
 
@@ -96,24 +100,32 @@ def severity_color(level: str) -> str:
 
 def build_finding(
     scan_type: str,
+    rule_id: str,
+    rule_name: str,
+    message: str,
     severity: str,
+    confidence: str,
     target: str,
-    issue: str,
-    location: str,
+    file_path: str,
+    line_number: str,
+    code_snippet: str,
     why_risky: str,
-    mitigation: str,
-    evidence: str = "",
+    remediation_guidance: str,
     references: list[str] | None = None,
 ) -> Finding:
     return Finding(
         scan_type=scan_type,
+        rule_id=rule_id.strip() or f"{scan_type.lower()}.generic",
+        rule_name=rule_name.strip() or "Security issue",
+        message=message.strip() or "A potential security issue was detected.",
         severity=normalize_severity(severity),
+        confidence=confidence.strip().upper() or "MEDIUM",
         target=target,
-        issue=issue,
-        location=location,
+        file_path=file_path.strip() or "N/A",
+        line_number=line_number.strip() or "N/A",
+        code_snippet=(code_snippet or "").strip(),
         why_risky=why_risky.strip() or "Potential security impact detected.",
-        mitigation=mitigation.strip() or "Review and remediate based on secure coding standards.",
-        evidence=evidence.strip(),
+        remediation_guidance=remediation_guidance.strip() or "Review and remediate based on secure coding standards.",
         references=references or [],
     )
 
@@ -127,7 +139,8 @@ def parse_semgrep(report_path: Path) -> list[Finding]:
         extra = item.get("extra", {})
         sev = normalize_severity(extra.get("severity", "MEDIUM"))
         metadata = extra.get("metadata", {})
-        location = f"{item.get('path', '')}:{item.get('start', {}).get('line', '?')}"
+        file_path = item.get("path", "")
+        line_number = str(item.get("start", {}).get("line", "?"))
         refs: list[str] = []
         cwe = metadata.get("cwe")
         if isinstance(cwe, list):
@@ -135,16 +148,28 @@ def parse_semgrep(report_path: Path) -> list[Finding]:
         owasp = metadata.get("owasp")
         if isinstance(owasp, list):
             refs.extend([str(x) for x in owasp[:2]])
+        confidence = str(metadata.get("confidence", "MEDIUM")).upper()
+        check_id = item.get("check_id", "semgrep.generic")
+        rule_name = str(metadata.get("shortlink", "") or metadata.get("category", "") or check_id)
+        snippet = (extra.get("lines") or "")[:500]
         findings.append(
             build_finding(
                 scan_type="SAST",
+                rule_id=check_id,
+                rule_name=rule_name,
+                message=extra.get("message", "Potentially insecure code pattern matched a Semgrep rule."),
                 severity=sev,
-                target=item.get("path", ""),
-                issue=item.get("check_id", "Semgrep finding"),
-                location=location,
+                confidence=confidence,
+                target=file_path,
+                file_path=file_path,
+                line_number=line_number,
+                code_snippet=snippet,
                 why_risky=extra.get("message", "Code pattern is known to introduce security weaknesses."),
-                mitigation=str(extra.get("fix") or metadata.get("remediation") or "Use secure APIs and validate/sanitize inputs before use."),
-                evidence=(extra.get("lines") or "")[:300],
+                remediation_guidance=str(
+                    extra.get("fix")
+                    or metadata.get("remediation")
+                    or "1) Replace unsafe API usage with secure alternatives. 2) Validate/sanitize untrusted input. 3) Add tests for the vulnerable path."
+                ),
                 references=refs,
             )
         )
@@ -159,18 +184,21 @@ def parse_gitleaks(report_path: Path) -> list[Finding]:
     for item in data if isinstance(data, list) else []:
         title = item.get("Description", "Potential secret exposed")
         file_name = item.get("File", "")
-        location = f"{item.get('File', '')}:{item.get('StartLine', '?')}"
         evidence = item.get("Match", "") or (item.get("Secret", "")[:6] + "..." if item.get("Secret") else "Redacted")
         findings.append(
             build_finding(
                 scan_type="SECRETS",
+                rule_id=str(item.get("RuleID", "gitleaks.generic")),
+                rule_name=title,
+                message=title,
                 severity="HIGH",
+                confidence="HIGH",
                 target=file_name,
-                issue=title,
-                location=location,
+                file_path=file_name,
+                line_number=str(item.get("StartLine", "?")),
+                code_snippet=evidence[:500],
                 why_risky="Leaked secrets can lead to account takeover, data exposure, or infrastructure compromise.",
-                mitigation="Rotate the exposed secret immediately, remove it from code/history, and use a secrets manager.",
-                evidence=evidence[:300],
+                remediation_guidance="1) Revoke/rotate the secret immediately. 2) Remove it from code and git history. 3) Move secrets to a vault/secret manager. 4) Add pre-commit secret scanning.",
                 references=[item.get("RuleID", "")] if item.get("RuleID") else [],
             )
         )
@@ -191,16 +219,21 @@ def parse_dependency_check(_report_path: Path) -> list[Finding]:
             details = vuln.get("description", "").replace("\n", " ")
             refs = [title]
             refs.extend([str(c) for c in (vuln.get("cwes") or [])[:3]])
+            pkg = dep.get("packagePath", file_name)
             findings.append(
                 build_finding(
                     scan_type="SCA",
+                    rule_id=title,
+                    rule_name=title,
+                    message=details[:300] or "Known vulnerable dependency detected.",
                     severity=sev,
+                    confidence="HIGH",
                     target=file_name,
-                    issue=title,
-                    location=file_name,
+                    file_path=file_name,
+                    line_number="N/A",
+                    code_snippet=f"Dependency: {pkg}",
                     why_risky=details[:300] or "Vulnerable dependency increases exploitability in the software supply chain.",
-                    mitigation="Upgrade to a patched version, pin dependencies, and enforce vulnerability gates in CI.",
-                    evidence=f"Dependency package: {dep.get('packagePath', file_name)}",
+                    remediation_guidance="1) Upgrade to a patched version. 2) Pin dependency versions. 3) Review transitive dependencies. 4) Enforce CVE policy gates in CI/CD.",
                     references=refs,
                 )
             )
@@ -218,6 +251,10 @@ def parse_zap(report_path: Path) -> list[Finding]:
             risk = str(alert.get("riskdesc", "INFO")).split(" ")[0].upper()
             sev = normalize_severity(risk)
             title = alert.get("name", "ZAP Alert")
+            instances = alert.get("instances", [])
+            url = ""
+            if instances and isinstance(instances, list):
+                url = str(instances[0].get("uri", "") or instances[0].get("url", ""))
             refs = []
             if alert.get("cweid"):
                 refs.append(f"CWE-{alert.get('cweid')}")
@@ -226,13 +263,20 @@ def parse_zap(report_path: Path) -> list[Finding]:
             findings.append(
                 build_finding(
                     scan_type="DAST",
+                    rule_id=f"zap.{alert.get('pluginid', 'generic')}",
+                    rule_name=title,
+                    message=alert.get("desc", "").replace("\n", " ")[:300] or title,
                     severity=sev,
-                    target=site_name,
-                    issue=title,
-                    location=site_name,
+                    confidence="MEDIUM",
+                    target=site_name or url or "webapp",
+                    file_path=url or site_name or "N/A",
+                    line_number="N/A",
+                    code_snippet=alert.get("evidence", "")[:500],
                     why_risky=alert.get("desc", "").replace("\n", " ")[:300],
-                    mitigation=alert.get("solution", "Apply secure HTTP/security controls and validate server-side protections."),
-                    evidence=alert.get("evidence", "")[:300],
+                    remediation_guidance=alert.get(
+                        "solution",
+                        "1) Apply secure server-side controls. 2) Validate input/output handling. 3) Re-test endpoint after patching.",
+                    ),
                     references=refs,
                 )
             )
@@ -249,18 +293,34 @@ def parse_checkov(report_path: Path) -> list[Finding]:
         sev = normalize_severity(item.get("severity", "MEDIUM"))
         title = item.get("check_name", item.get("check_id", "IaC issue"))
         file_path = item.get("file_path", "iac")
-        location = f"{file_path}:{item.get('file_line_range', ['?'])[0]}"
+        line_range = item.get("file_line_range", ["?"])
+        line_number = str(line_range[0]) if line_range else "?"
         details = item.get("guideline", "") or item.get("check_id", "")
+        snippet = ""
+        code_block = item.get("code_block", [])
+        if isinstance(code_block, list):
+            snippet_lines: list[str] = []
+            for line in code_block[:6]:
+                if isinstance(line, list) and len(line) > 1:
+                    snippet_lines.append(str(line[1]).rstrip())
+                elif isinstance(line, str):
+                    snippet_lines.append(line.rstrip())
+            snippet = "\n".join(snippet_lines)
         findings.append(
             build_finding(
                 scan_type="IAC",
+                rule_id=item.get("check_id", "checkov.generic"),
+                rule_name=title,
+                message=title,
                 severity=sev,
+                confidence="HIGH",
                 target=file_path,
-                issue=title,
-                location=location,
+                file_path=file_path,
+                line_number=line_number,
+                code_snippet=snippet,
                 why_risky=item.get("check_name", "Infrastructure configuration may expose assets or weaken controls."),
-                mitigation=details or "Harden IaC configuration and enforce policy checks in CI.",
-                evidence=f"Resource: {item.get('resource', 'unknown')}",
+                remediation_guidance=details
+                or "1) Apply least privilege and secure defaults. 2) Restrict network exposure. 3) Re-run policy checks before deployment.",
                 references=[item.get("check_id", "")] if item.get("check_id") else [],
             )
         )
@@ -276,26 +336,37 @@ def parse_iast(report_path: Path) -> list[Finding]:
         findings.append(
             build_finding(
                 scan_type="IAST",
+                rule_id="iast.runtime.connectivity",
+                rule_name="IAST-lite runtime probe failed",
+                message="Runtime checks could not execute against the provided URL.",
                 severity="INFO",
+                confidence="LOW",
                 target=data.get("url", ""),
-                issue="IAST-lite runtime probe failed",
-                location=data.get("url", ""),
+                file_path=data.get("url", ""),
+                line_number="N/A",
+                code_snippet=str(data.get("error", "")),
                 why_risky="Runtime checks could not be completed; security posture is unknown.",
-                mitigation="Verify target URL reachability from scanner runtime and rerun scan.",
-                evidence=str(data["error"]),
+                remediation_guidance="1) Verify URL is reachable from scanner host. 2) Start target application. 3) Re-run IAST scan.",
             )
         )
     for item in data.get("findings", []):
         findings.append(
             build_finding(
                 scan_type="IAST",
+                rule_id=f"iast.{item.get('title', 'runtime').lower().replace(' ', '-')}",
+                rule_name=item.get("title", "IAST finding"),
+                message=item.get("title", "IAST finding"),
                 severity=normalize_severity(item.get("severity", "MEDIUM")),
+                confidence="MEDIUM",
                 target=data.get("url", ""),
-                issue=item.get("title", "IAST finding"),
-                location=data.get("url", ""),
+                file_path=data.get("url", ""),
+                line_number="N/A",
+                code_snippet=item.get("evidence", "")[:500],
                 why_risky=item.get("evidence", "Runtime behavior indicates missing security hardening."),
-                mitigation=item.get("recommendation", "Apply recommended runtime security headers and cookie hardening."),
-                evidence=item.get("evidence", ""),
+                remediation_guidance=item.get(
+                    "recommendation",
+                    "1) Apply missing security headers/cookie protections. 2) Harden web server config. 3) Re-test endpoint.",
+                ),
             )
         )
     return findings
@@ -388,13 +459,17 @@ def print_summary(findings: list[Finding]) -> None:
     print(c("\n=== Security Issues Report ===", Color.BOLD))
     for i, f in enumerate(sorted_findings[:25], start=1):
         sev = normalize_severity(f.severity)
-        print(c(f"\n[{i:02d}] [{sev}] {f.scan_type} - {f.issue}", severity_color(sev)))
-        print(f"Target     : {f.target}")
-        print(f"Location   : {f.location}")
-        print(f"Why Risky  : {f.why_risky[:300]}")
-        print(f"Mitigation : {f.mitigation[:300]}")
-        if f.evidence:
-            print(c(f"Evidence   : {f.evidence[:300]}", Color.DIM))
+        print(c(f"\n[{i:02d}] [{sev}] {f.scan_type}", severity_color(sev)))
+        print(f"Rule ID and Name      : {f.rule_id} | {f.rule_name}")
+        print(f"Message/Description   : {f.message[:300]}")
+        print(f"Severity/Confidence   : {sev} / {f.confidence}")
+        print(f"Target                : {f.target}")
+        print(f"File Path/Line Number : {f.file_path}:{f.line_number}")
+        if f.code_snippet:
+            print(c("Code Snippet:", Color.DIM))
+            print(c(f.code_snippet[:500], Color.DIM))
+        print(f"Why Risky             : {f.why_risky[:350]}")
+        print(f"Remediation Guidance  : {f.remediation_guidance[:350]}")
         if f.references:
             print(c(f"Refs       : {', '.join(f.references[:5])}", Color.DIM))
 
