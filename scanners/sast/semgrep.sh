@@ -1,10 +1,18 @@
-# scanners/sast/semgrep_scan.sh
-#!/bin/bash
-TARGET=$1
+#!/usr/bin/env bash
+set -u
 
-pip install semgrep
+TARGET=${1:-}
+REPORT=${2:-reports/semgrep.json}
 
-semgrep scan --config=auto $TARGET \
-  --json > reports/semgrep.json || true
+if [[ -z "$TARGET" ]]; then
+  echo "Usage: $0 <target_path> [report_path]"
+  exit 2
+fi
 
-echo "[+] SAST (Semgrep) completed"
+if ! command -v semgrep >/dev/null 2>&1; then
+  echo "[ERROR] semgrep is not installed. Install: pipx install semgrep or pip install semgrep"
+  exit 1
+fi
+
+mkdir -p "$(dirname "$REPORT")"
+semgrep scan --config=auto "$TARGET" --json --output "$REPORT"

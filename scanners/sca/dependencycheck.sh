@@ -1,13 +1,18 @@
-# scanners/sca/dependency_check.sh
-#!/bin/bash
-TARGET=$1
+#!/usr/bin/env bash
+set -u
 
-sudo apt update
-sudo apt install -y dependency-check
+TARGET=${1:-}
+OUT_DIR=${2:-reports}
 
-dependency-check \
-  --scan $TARGET \
-  --format JSON \
-  --out reports/ || true
+if [[ -z "$TARGET" ]]; then
+  echo "Usage: $0 <target_path> [out_dir]"
+  exit 2
+fi
 
-echo "[+] SCA completed"
+if ! command -v dependency-check >/dev/null 2>&1; then
+  echo "[ERROR] dependency-check is not installed. Install from OWASP Dependency-Check releases."
+  exit 1
+fi
+
+mkdir -p "$OUT_DIR"
+dependency-check --scan "$TARGET" --format JSON --out "$OUT_DIR"

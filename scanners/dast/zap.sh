@@ -1,11 +1,20 @@
-# scanners/dast/zap_scan.sh
-#!/bin/bash
-URL=$1
+#!/usr/bin/env bash
+set -u
 
-docker run --rm \
-  -v $(pwd):/zap/wrk \
-  owasp/zap2docker-stable zap-baseline.py \
-  -t $URL \
-  -J reports/zap.json || true
+URL=${1:-}
+REPORT=${2:-reports/zap.json}
 
-echo "[+] DAST completed"
+if [[ -z "$URL" ]]; then
+  echo "Usage: $0 <url> [report_path]"
+  exit 2
+fi
+
+mkdir -p "$(dirname "$REPORT")"
+
+if command -v docker >/dev/null 2>&1; then
+  docker run --rm -v "$(pwd)":/zap/wrk ghcr.io/zaproxy/zaproxy:stable \
+    zap-baseline.py -t "$URL" -J "/zap/wrk/$REPORT"
+else
+  echo "[ERROR] docker is required for ZAP baseline scan."
+  exit 1
+fi

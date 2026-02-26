@@ -11,9 +11,11 @@ on:
           - sast
           - sca
           - secrets
+          - iac
           - dast
+          - iast
       target:
-        description: "Scan target (repo path or URL for DAST)"
+        description: "Scan target path (or URL for dast/iast)"
         required: true
         default: "."
 
@@ -22,30 +24,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-    - name: Make scanner scripts executable
-      run: chmod +x scanners/**/**/*.sh
+      - name: Make scanner scripts executable
+        run: chmod +x scanners/**/**/*.sh
 
-    - name: Run SAST
-      if: ${{ github.event.inputs.scan_type == 'sast' }}
-      run: scanners/sast/semgrep_scan.sh ${{ github.event.inputs.target }}
+      - name: Run SAST
+        if: ${{ github.event.inputs.scan_type == 'sast' }}
+        run: scanners/sast/semgrep.sh ${{ github.event.inputs.target }} reports/semgrep.json
 
-    - name: Run SCA
-      if: ${{ github.event.inputs.scan_type == 'sca' }}
-      run: scanners/sca/dependency_check.sh ${{ github.event.inputs.target }}
+      - name: Run SCA
+        if: ${{ github.event.inputs.scan_type == 'sca' }}
+        run: scanners/sca/dependencycheck.sh ${{ github.event.inputs.target }} reports
 
-    - name: Run Secrets Scan
-      if: ${{ github.event.inputs.scan_type == 'secrets' }}
-      run: scanners/secrets/gitleaks_scan.sh ${{ github.event.inputs.target }}
+      - name: Run Secrets Scan
+        if: ${{ github.event.inputs.scan_type == 'secrets' }}
+        run: scanners/secrets/gitleaks.sh ${{ github.event.inputs.target }} reports/gitleaks.json
 
-    - name: Run DAST
-      if: ${{ github.event.inputs.scan_type == 'dast' }}
-      run: scanners/dast/zap_scan.sh ${{ github.event.inputs.target }}
+      - name: Run IaC Scan
+        if: ${{ github.event.inputs.scan_type == 'iac' }}
+        run: scanners/iac/checkov.sh ${{ github.event.inputs.target }} reports/checkov.json
 
-    - name: Upload reports
-      uses: actions/upload-artifact@v4
-      with:
-        name: devseckit-reports
-        path: reports/
+      - name: Run DAST
+        if: ${{ github.event.inputs.scan_type == 'dast' }}
+        run: scanners/dast/zap.sh ${{ github.event.inputs.target }} reports/zap.json
+
+      - name: Run IAST-lite
+        if: ${{ github.event.inputs.scan_type == 'iast' }}
+        run: scanners/iast/iast.sh ${{ github.event.inputs.target }} reports/iast-lite.json
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: devseckit-reports
+          path: reports/
