@@ -29,7 +29,6 @@ if command -v semgrep >/dev/null 2>&1; then
   echo "[INFO] Running Semgrep via local binary"
   semgrep scan --config auto "$TARGET_ABS" \
     --exclude "$SEMGREP_EXCLUDES" \
-    --metrics=off \
     --json --output "$REPORT_ABS"
 elif command -v docker >/dev/null 2>&1; then
   echo "[INFO] Running Semgrep via Docker image: $SEMGREP_IMAGE"
@@ -38,7 +37,6 @@ elif command -v docker >/dev/null 2>&1; then
     -v "$REPORT_DIR:/out" \
     "$SEMGREP_IMAGE" semgrep scan --config auto /src \
     --exclude "$SEMGREP_EXCLUDES" \
-    --metrics=off \
     --json --output "/out/$REPORT_FILE"
 else
   echo "[ERROR] semgrep or docker is required."
