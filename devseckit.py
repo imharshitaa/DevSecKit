@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 from urllib.parse import urlparse
+import shutil
 
 ROOT = Path(__file__).resolve().parent
 REPORTS_DIR = ROOT / "reports"
@@ -48,6 +49,8 @@ class ScanDef:
     needs_url: bool
     report_hint: str
     parser: Callable[[Path], list[Finding]]
+    required_cmds: list[str]
+    install_hint: str
 
 
 def print_banner() -> None:
@@ -56,7 +59,7 @@ def print_banner() -> None:
 
 
 def run_command(cmd: list[str]) -> tuple[int, str, str]:
-    proc = subprocess.run(cmd, text=True, capture_output=True)
+    proc = subprocess.run(cmd, text=True, capture_output=True, cwd=ROOT)
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 
 
@@ -166,7 +169,7 @@ def parse_iast(report_path: Path) -> list[Finding]:
     data = json.loads(report_path.read_text(encoding="utf-8"))
     findings: list[Finding] = []
     if data.get("error"):
-        findings.append(Finding("IAST", "HIGH", "IAST-lite request failed", data.get("url", ""), data["error"]))
+        findings.append(Finding("IAST", "INFO", "IAST-lite request failed", data.get("url", ""), data["error"]))
     for item in data.get("findings", []):
         findings.append(
             Finding(
@@ -225,6 +228,26 @@ def ask_scans() -> list[str]:
     return list(dict.fromkeys(selected))
 
 
+def preflight(selected: list[str], scan_defs: dict[str, ScanDef]) -> tuple[list[str], list[str]]:
+    ready: list[str] = []
+    skipped: list[str] = []
+    print(c("\n=== Preflight Check ===", Color.BOLD))
+
+    for key in selected:
+        scan = scan_defs[key]
+        missing = [cmd for cmd in scan.required_cmds if shutil.which(cmd) is None]
+        if missing:
+            skipped.append(key)
+            print(c(f"[SKIP] {scan.name}", Color.YELLOW))
+            print(c(f"       Missing: {', '.join(missing)}", Color.DIM))
+            print(c(f"       Install: {scan.install_hint}", Color.DIM))
+            continue
+        ready.append(key)
+        print(c(f"[OK]   {scan.name}", Color.GREEN))
+
+    return ready, skipped
+
+
 def print_summary(findings: list[Finding]) -> None:
     if not findings:
         print(c("\nNo findings detected by selected scanners.", Color.GREEN))
@@ -267,12 +290,66 @@ def main() -> int:
     print_banner()
 
     scan_defs = {
-        "sast": ScanDef("sast", "SAST (Semgrep)", ROOT / "scanners/sast/semgrep.sh", False, "reports/semgrep.json", parse_semgrep),
-        "sca": ScanDef("sca", "SCA (Dependency-Check)", ROOT / "scanners/sca/dependencycheck.sh", False, "reports/dependency-check-report.json", parse_dependency_check),
-        "secrets": ScanDef("secrets", "Secrets (Gitleaks)", ROOT / "scanners/secrets/gitleaks.sh", False, "reports/gitleaks.json", parse_gitleaks),
-        "iac": ScanDef("iac", "IaC (Checkov)", ROOT / "scanners/iac/checkov.sh", False, "reports/checkov.json", parse_checkov),
-        "dast": ScanDef("dast", "DAST (ZAP baseline)", ROOT / "scanners/dast/zap.sh", True, "reports/zap.json", parse_zap),
-        "iast": ScanDef("iast", "IAST-lite (Runtime header checks)", ROOT / "scanners/iast/iast.sh", True, "reports/iast-lite.json", parse_iast),
+        "sast": ScanDef(
+            "sast",
+            "SAST (Semgrep)",
+            ROOT / "scanners/sast/semgrep.sh",
+            False,
+            "reports/semgrep.json",
+            parse_semgrep,
+            ["semgrep"],
+            "pipx install semgrep",
+        ),
+        "sca": ScanDef(
+            "sca",
+            "SCA (Dependency-Check)",
+            ROOT / "scanners/sca/dependencycheck.sh",
+            False,
+            "reports/dependency-check-report.json",
+            parse_dependency_check,
+            ["dependency-check"],
+            "Install OWASP Dependency-Check and ensure `dependency-check` is on PATH.",
+        ),
+        "secrets": ScanDef(
+            "secrets",
+            "Secrets (Gitleaks)",
+            ROOT / "scanners/secrets/gitleaks.sh",
+            False,
+            "reports/gitleaks.json",
+            parse_gitleaks,
+            ["gitleaks"],
+            "Install Gitleaks from https://github.com/gitleaks/gitleaks/releases",
+        ),
+        "iac": ScanDef(
+            "iac",
+            "IaC (Checkov)",
+            ROOT / "scanners/iac/checkov.sh",
+            False,
+            "reports/checkov.json",
+            parse_checkov,
+            ["checkov"],
+            "pipx install checkov",
+        ),
+        "dast": ScanDef(
+            "dast",
+            "DAST (ZAP baseline)",
+            ROOT / "scanners/dast/zap.sh",
+            True,
+            "reports/zap.json",
+            parse_zap,
+            ["docker"],
+            "Install Docker Desktop and start it; ensure your user can access the Docker socket.",
+        ),
+        "iast": ScanDef(
+            "iast",
+            "IAST-lite (Runtime header checks)",
+            ROOT / "scanners/iast/iast.sh",
+            True,
+            "reports/iast-lite.json",
+            parse_iast,
+            ["python3", "curl"],
+            "Install Python 3 and curl.",
+        ),
     }
 
     try:
@@ -280,6 +357,11 @@ def main() -> int:
         selected = ask_scans()
         if not selected:
             raise ValueError("No valid scan selected.")
+        selected, skipped = preflight(selected, scan_defs)
+        if skipped:
+            print(c(f"Skipped scans: {', '.join(skipped)}", Color.YELLOW))
+        if not selected:
+            raise ValueError("No runnable scans selected. Install missing tools and retry.")
 
         url = None
         if any(scan_defs[s].needs_url for s in selected):
@@ -311,8 +393,11 @@ def main() -> int:
                 print(c(f"{scan.name} completed", Color.GREEN))
             else:
                 print(c(f"{scan.name} failed (continuing).", Color.RED))
-                if err:
-                    print(c(err.splitlines()[-1], Color.DIM))
+                failure_text = err or out
+                if failure_text:
+                    print(c(failure_text.splitlines()[-1], Color.DIM))
+                if "docker.sock" in failure_text and "permission denied" in failure_text.lower():
+                    print(c("Docker permission issue detected. Start Docker Desktop and grant socket access.", Color.DIM))
 
             try:
                 report = ROOT / scan.report_hint
