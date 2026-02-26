@@ -12,10 +12,8 @@ It can:
 ## Supported scan workflows
 
 - `sast`: Semgrep (static code analysis)
-- `sca`: OWASP Dependency-Check (dependency vulnerabilities)
-- `sca_trivy`: Trivy FS vuln scan (dependency vulnerabilities)
-- `secrets`: Gitleaks (secret detection)
-- `secrets_trufflehog`: TruffleHog (secret detection)
+- `sca`: Dependency-Check + Trivy (dependency vulnerabilities)
+- `secrets`: Gitleaks + TruffleHog (secret detection)
 - `iac`: Checkov (IaC misconfiguration)
 - `dast`: OWASP ZAP Baseline (web runtime scan)
 - `iast`: IAST-lite runtime checks (security headers)

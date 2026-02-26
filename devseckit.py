@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import subprocess
 import sys
@@ -295,14 +296,75 @@ def parse_trivy(report_path: Path) -> list[Finding]:
         return []
     data = json.loads(report_path.read_text(encoding="utf-8"))
     findings: list[Finding] = []
+
+    def resolve_target_path(raw_target: str) -> Path | None:
+        candidate = Path(raw_target)
+        lookup = [candidate, ROOT / raw_target, ROOT / "targets" / raw_target]
+        for path in lookup:
+            if path.exists() and path.is_file():
+                return path
+        if "/" in raw_target:
+            parts = raw_target.split("/", 1)
+            if len(parts) == 2:
+                alt = ROOT / "targets" / parts[0] / parts[1]
+                if alt.exists() and alt.is_file():
+                    return alt
+        return None
+
+    def locate_dependency_line(file_path: Path, pkg: str, version: str) -> tuple[str, str]:
+        try:
+            lines = file_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except Exception:
+            return "N/A", ""
+
+        pkg_l = pkg.lower().strip()
+        ver_l = version.lower().strip()
+        if not pkg_l:
+            return "N/A", ""
+
+        def snippet_at(idx: int) -> str:
+            start = max(0, idx - 2)
+            end = min(len(lines), idx + 3)
+            out = []
+            for i in range(start, end):
+                out.append(f"{i+1}: {lines[i]}")
+            return "\n".join(out)
+
+        # 1) same-line match (common in lock files)
+        for i, raw in enumerate(lines):
+            line = raw.lower()
+            if pkg_l in line and (not ver_l or ver_l in line):
+                return str(i + 1), snippet_at(i)
+
+        # 2) nearby-line match where package/version appear in a block
+        pkg_indices = [i for i, raw in enumerate(lines) if pkg_l in raw.lower()]
+        for i in pkg_indices:
+            window = "\n".join(lines[i : min(len(lines), i + 8)]).lower()
+            if ver_l and ver_l in window:
+                return str(i + 1), snippet_at(i)
+
+        # 3) lockfile key style, e.g. /axios@1.13.2:
+        if ver_l:
+            pat = re.compile(rf"{re.escape(pkg_l)}[@\\s:/=]+{re.escape(ver_l)}")
+            for i, raw in enumerate(lines):
+                if pat.search(raw.lower()):
+                    return str(i + 1), snippet_at(i)
+
+        return "N/A", ""
+
     for result in data.get("Results", []) or []:
         target = result.get("Target", "dependency-scan")
+        resolved_target = resolve_target_path(target)
         vuln_list = result.get("Vulnerabilities", []) or []
         for vuln in vuln_list:
             vuln_id = vuln.get("VulnerabilityID", "TRIVY-VULN")
             pkg = vuln.get("PkgName", "package")
             installed = vuln.get("InstalledVersion", "unknown")
             fixed = vuln.get("FixedVersion", "N/A")
+            detected_line = "N/A"
+            detected_snippet = ""
+            if resolved_target is not None:
+                detected_line, detected_snippet = locate_dependency_line(resolved_target, pkg, installed)
             title = vuln.get("Title", vuln.get("Description", "Dependency vulnerability"))
             refs = []
             primary_url = vuln.get("PrimaryURL")
@@ -319,8 +381,8 @@ def parse_trivy(report_path: Path) -> list[Finding]:
                     confidence="HIGH",
                     target=target,
                     file_path=target,
-                    line_number="N/A",
-                    code_snippet=f"{pkg} {installed} (fixed: {fixed})",
+                    line_number=detected_line,
+                    code_snippet=detected_snippet or f"{pkg} {installed} (fixed: {fixed})",
                     why_risky=f"Dependency {pkg}@{installed} is associated with known vulnerabilities that may be exploitable.",
                     remediation_guidance="1) Upgrade to fixed version. 2) Verify transitive dependency paths. 3) Add SCA policy gate in CI to block vulnerable versions.",
                     references=refs,
@@ -542,7 +604,7 @@ def ask_target() -> tuple[Path, str | None]:
 
 
 def ask_scans() -> list[str]:
-    menu = ["sast", "sca", "sca_trivy", "secrets", "secrets_trufflehog", "iac", "dast", "iast"]
+    menu = ["sast", "sca", "secrets", "iac", "dast", "iast"]
     print(c("\nAvailable scan types:", Color.BLUE))
     for i, item in enumerate(menu, start=1):
         print(f"{i}) {item}")
@@ -729,9 +791,21 @@ def main() -> int:
 
     try:
         target, _ = ask_target()
-        selected = ask_scans()
-        if not selected:
+        requested_scans = ask_scans()
+        if not requested_scans:
             raise ValueError("No valid scan selected.")
+
+        # Expand grouped scan types so each category runs all relevant tools.
+        expanded: list[str] = []
+        for key in requested_scans:
+            if key == "sca":
+                expanded.extend(["sca", "sca_trivy"])
+            elif key == "secrets":
+                expanded.extend(["secrets", "secrets_trufflehog"])
+            else:
+                expanded.append(key)
+        selected = list(dict.fromkeys(expanded))
+
         selected, skipped = preflight(selected, scan_defs)
         if skipped:
             print(c(f"Skipped scans: {', '.join(skipped)}", Color.YELLOW))
@@ -774,14 +848,15 @@ def main() -> int:
                 if "docker.sock" in failure_text and "permission denied" in failure_text.lower():
                     print(c("Docker permission issue detected. Start Docker Desktop and grant socket access.", Color.DIM))
 
-            try:
-                report = ROOT / scan.report_hint
-                all_findings.extend(scan.parser(report))
-            except Exception as parse_exc:
-                print(c(f"Could not parse {scan.key} results: {parse_exc}", Color.YELLOW))
+            if code == 0:
+                try:
+                    report = ROOT / scan.report_hint
+                    all_findings.extend(scan.parser(report))
+                except Exception as parse_exc:
+                    print(c(f"Could not parse {scan.key} results: {parse_exc}", Color.YELLOW))
 
         print_summary(all_findings)
-        combined_report = write_combined_report(target, selected, all_findings, executions)
+        combined_report = write_combined_report(target, requested_scans, all_findings, executions)
         print(c(f"\nDetailed JSON report: {combined_report}", Color.BLUE))
         return 0
 
