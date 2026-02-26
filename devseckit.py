@@ -36,9 +36,13 @@ def c(text: str, color: str) -> str:
 class Finding:
     scan_type: str
     severity: str
-    title: str
+    target: str
+    issue: str
     location: str
-    details: str
+    why_risky: str
+    mitigation: str
+    evidence: str
+    references: list[str]
 
 
 @dataclass
@@ -90,16 +94,59 @@ def severity_color(level: str) -> str:
     return Color.BLUE
 
 
+def build_finding(
+    scan_type: str,
+    severity: str,
+    target: str,
+    issue: str,
+    location: str,
+    why_risky: str,
+    mitigation: str,
+    evidence: str = "",
+    references: list[str] | None = None,
+) -> Finding:
+    return Finding(
+        scan_type=scan_type,
+        severity=normalize_severity(severity),
+        target=target,
+        issue=issue,
+        location=location,
+        why_risky=why_risky.strip() or "Potential security impact detected.",
+        mitigation=mitigation.strip() or "Review and remediate based on secure coding standards.",
+        evidence=evidence.strip(),
+        references=references or [],
+    )
+
+
 def parse_semgrep(report_path: Path) -> list[Finding]:
     if not report_path.exists():
         return []
     data = json.loads(report_path.read_text(encoding="utf-8"))
     findings: list[Finding] = []
     for item in data.get("results", []):
-        sev = normalize_severity(item.get("extra", {}).get("severity", "MEDIUM"))
+        extra = item.get("extra", {})
+        sev = normalize_severity(extra.get("severity", "MEDIUM"))
+        metadata = extra.get("metadata", {})
         location = f"{item.get('path', '')}:{item.get('start', {}).get('line', '?')}"
+        refs: list[str] = []
+        cwe = metadata.get("cwe")
+        if isinstance(cwe, list):
+            refs.extend([str(x) for x in cwe[:3]])
+        owasp = metadata.get("owasp")
+        if isinstance(owasp, list):
+            refs.extend([str(x) for x in owasp[:2]])
         findings.append(
-            Finding("SAST", sev, item.get("check_id", "Semgrep Finding"), location, item.get("extra", {}).get("message", ""))
+            build_finding(
+                scan_type="SAST",
+                severity=sev,
+                target=item.get("path", ""),
+                issue=item.get("check_id", "Semgrep finding"),
+                location=location,
+                why_risky=extra.get("message", "Code pattern is known to introduce security weaknesses."),
+                mitigation=str(extra.get("fix") or metadata.get("remediation") or "Use secure APIs and validate/sanitize inputs before use."),
+                evidence=(extra.get("lines") or "")[:300],
+                references=refs,
+            )
         )
     return findings
 
@@ -111,9 +158,22 @@ def parse_gitleaks(report_path: Path) -> list[Finding]:
     findings: list[Finding] = []
     for item in data if isinstance(data, list) else []:
         title = item.get("Description", "Potential secret exposed")
+        file_name = item.get("File", "")
         location = f"{item.get('File', '')}:{item.get('StartLine', '?')}"
-        details = item.get("Secret", "")[:6] + "..." if item.get("Secret") else "Redacted"
-        findings.append(Finding("SECRETS", "HIGH", title, location, details))
+        evidence = item.get("Match", "") or (item.get("Secret", "")[:6] + "..." if item.get("Secret") else "Redacted")
+        findings.append(
+            build_finding(
+                scan_type="SECRETS",
+                severity="HIGH",
+                target=file_name,
+                issue=title,
+                location=location,
+                why_risky="Leaked secrets can lead to account takeover, data exposure, or infrastructure compromise.",
+                mitigation="Rotate the exposed secret immediately, remove it from code/history, and use a secrets manager.",
+                evidence=evidence[:300],
+                references=[item.get("RuleID", "")] if item.get("RuleID") else [],
+            )
+        )
     return findings
 
 
@@ -128,8 +188,22 @@ def parse_dependency_check(_report_path: Path) -> list[Finding]:
         for vuln in dep.get("vulnerabilities", []):
             sev = normalize_severity(vuln.get("severity", "MEDIUM"))
             title = vuln.get("name", "Dependency vulnerability")
-            details = vuln.get("description", "")[:180].replace("\n", " ")
-            findings.append(Finding("SCA", sev, title, file_name, details))
+            details = vuln.get("description", "").replace("\n", " ")
+            refs = [title]
+            refs.extend([str(c) for c in (vuln.get("cwes") or [])[:3]])
+            findings.append(
+                build_finding(
+                    scan_type="SCA",
+                    severity=sev,
+                    target=file_name,
+                    issue=title,
+                    location=file_name,
+                    why_risky=details[:300] or "Vulnerable dependency increases exploitability in the software supply chain.",
+                    mitigation="Upgrade to a patched version, pin dependencies, and enforce vulnerability gates in CI.",
+                    evidence=f"Dependency package: {dep.get('packagePath', file_name)}",
+                    references=refs,
+                )
+            )
     return findings
 
 
@@ -139,12 +213,29 @@ def parse_zap(report_path: Path) -> list[Finding]:
     data = json.loads(report_path.read_text(encoding="utf-8"))
     findings: list[Finding] = []
     for site in data.get("site", []):
+        site_name = site.get("@name", "webapp")
         for alert in site.get("alerts", []):
             risk = str(alert.get("riskdesc", "INFO")).split(" ")[0].upper()
             sev = normalize_severity(risk)
             title = alert.get("name", "ZAP Alert")
-            details = alert.get("desc", "")[:180].replace("\n", " ")
-            findings.append(Finding("DAST", sev, title, site.get("@name", "webapp"), details))
+            refs = []
+            if alert.get("cweid"):
+                refs.append(f"CWE-{alert.get('cweid')}")
+            if alert.get("wascid"):
+                refs.append(f"WASC-{alert.get('wascid')}")
+            findings.append(
+                build_finding(
+                    scan_type="DAST",
+                    severity=sev,
+                    target=site_name,
+                    issue=title,
+                    location=site_name,
+                    why_risky=alert.get("desc", "").replace("\n", " ")[:300],
+                    mitigation=alert.get("solution", "Apply secure HTTP/security controls and validate server-side protections."),
+                    evidence=alert.get("evidence", "")[:300],
+                    references=refs,
+                )
+            )
     return findings
 
 
@@ -157,9 +248,22 @@ def parse_checkov(report_path: Path) -> list[Finding]:
     for item in checks:
         sev = normalize_severity(item.get("severity", "MEDIUM"))
         title = item.get("check_name", item.get("check_id", "IaC issue"))
-        location = item.get("file_path", "iac")
-        details = item.get("guideline", item.get("check_id", ""))
-        findings.append(Finding("IAC", sev, title, location, details))
+        file_path = item.get("file_path", "iac")
+        location = f"{file_path}:{item.get('file_line_range', ['?'])[0]}"
+        details = item.get("guideline", "") or item.get("check_id", "")
+        findings.append(
+            build_finding(
+                scan_type="IAC",
+                severity=sev,
+                target=file_path,
+                issue=title,
+                location=location,
+                why_risky=item.get("check_name", "Infrastructure configuration may expose assets or weaken controls."),
+                mitigation=details or "Harden IaC configuration and enforce policy checks in CI.",
+                evidence=f"Resource: {item.get('resource', 'unknown')}",
+                references=[item.get("check_id", "")] if item.get("check_id") else [],
+            )
+        )
     return findings
 
 
@@ -169,15 +273,29 @@ def parse_iast(report_path: Path) -> list[Finding]:
     data = json.loads(report_path.read_text(encoding="utf-8"))
     findings: list[Finding] = []
     if data.get("error"):
-        findings.append(Finding("IAST", "INFO", "IAST-lite request failed", data.get("url", ""), data["error"]))
+        findings.append(
+            build_finding(
+                scan_type="IAST",
+                severity="INFO",
+                target=data.get("url", ""),
+                issue="IAST-lite runtime probe failed",
+                location=data.get("url", ""),
+                why_risky="Runtime checks could not be completed; security posture is unknown.",
+                mitigation="Verify target URL reachability from scanner runtime and rerun scan.",
+                evidence=str(data["error"]),
+            )
+        )
     for item in data.get("findings", []):
         findings.append(
-            Finding(
-                "IAST",
-                normalize_severity(item.get("severity", "MEDIUM")),
-                item.get("title", "IAST finding"),
-                data.get("url", ""),
-                item.get("evidence", ""),
+            build_finding(
+                scan_type="IAST",
+                severity=normalize_severity(item.get("severity", "MEDIUM")),
+                target=data.get("url", ""),
+                issue=item.get("title", "IAST finding"),
+                location=data.get("url", ""),
+                why_risky=item.get("evidence", "Runtime behavior indicates missing security hardening."),
+                mitigation=item.get("recommendation", "Apply recommended runtime security headers and cookie hardening."),
+                evidence=item.get("evidence", ""),
             )
         )
     return findings
@@ -267,22 +385,38 @@ def print_summary(findings: list[Finding]) -> None:
     print(" | ".join([c(f"{k}: {v}", severity_color(k)) for k, v in ordered]))
 
     sorted_findings = sorted(findings, key=lambda f: severity_rank(f.severity), reverse=True)
-    print(c("\nTop findings:", Color.BOLD))
-    for i, f in enumerate(sorted_findings[:20], start=1):
+    print(c("\n=== Security Issues Report ===", Color.BOLD))
+    for i, f in enumerate(sorted_findings[:25], start=1):
         sev = normalize_severity(f.severity)
-        line = f"{i:02d}. [{sev}] {f.scan_type} | {f.title} | {f.location}"
-        print(c(line, severity_color(sev)))
-        if f.details:
-            print(c(f"    {f.details[:200]}", Color.DIM))
+        print(c(f"\n[{i:02d}] [{sev}] {f.scan_type} - {f.issue}", severity_color(sev)))
+        print(f"Target     : {f.target}")
+        print(f"Location   : {f.location}")
+        print(f"Why Risky  : {f.why_risky[:300]}")
+        print(f"Mitigation : {f.mitigation[:300]}")
+        if f.evidence:
+            print(c(f"Evidence   : {f.evidence[:300]}", Color.DIM))
+        if f.references:
+            print(c(f"Refs       : {', '.join(f.references[:5])}", Color.DIM))
 
 
 def write_combined_report(target: Path, selected: list[str], findings: list[Finding], executions: list[dict[str, str]]) -> Path:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = REPORTS_DIR / "combined_report.json"
+    severity_summary: dict[str, int] = {}
+    scan_summary: dict[str, int] = {}
+    for f in findings:
+        sev = normalize_severity(f.severity)
+        severity_summary[sev] = severity_summary.get(sev, 0) + 1
+        scan_summary[f.scan_type] = scan_summary.get(f.scan_type, 0) + 1
     payload = {
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "target": str(target),
         "selected_scans": selected,
+        "summary": {
+            "total_findings": len(findings),
+            "severity": severity_summary,
+            "scan_type": scan_summary,
+        },
         "execution": executions,
         "findings": [f.__dict__ for f in findings],
     }
