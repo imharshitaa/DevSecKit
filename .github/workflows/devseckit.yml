@@ -10,7 +10,9 @@ on:
         options:
           - sast
           - sca
+          - sca_trivy
           - secrets
+          - secrets_trufflehog
           - iac
           - dast
           - iast
@@ -34,13 +36,21 @@ jobs:
         if: ${{ github.event.inputs.scan_type == 'sast' }}
         run: scanners/sast/semgrep.sh ${{ github.event.inputs.target }} reports/semgrep.json
 
-      - name: Run SCA
+      - name: Run SCA (Dependency-Check)
         if: ${{ github.event.inputs.scan_type == 'sca' }}
         run: scanners/sca/dependencycheck.sh ${{ github.event.inputs.target }} reports
 
-      - name: Run Secrets Scan
+      - name: Run SCA (Trivy)
+        if: ${{ github.event.inputs.scan_type == 'sca_trivy' }}
+        run: scanners/sca/trivy.sh ${{ github.event.inputs.target }} reports/trivy-sca.json
+
+      - name: Run Secrets Scan (Gitleaks)
         if: ${{ github.event.inputs.scan_type == 'secrets' }}
         run: scanners/secrets/gitleaks.sh ${{ github.event.inputs.target }} reports/gitleaks.json
+
+      - name: Run Secrets Scan (TruffleHog)
+        if: ${{ github.event.inputs.scan_type == 'secrets_trufflehog' }}
+        run: scanners/secrets/trufflehog.sh ${{ github.event.inputs.target }} reports/trufflehog.json
 
       - name: Run IaC Scan
         if: ${{ github.event.inputs.scan_type == 'iac' }}

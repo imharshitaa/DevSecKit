@@ -13,7 +13,9 @@ It can:
 
 - `sast`: Semgrep (static code analysis)
 - `sca`: OWASP Dependency-Check (dependency vulnerabilities)
+- `sca_trivy`: Trivy FS vuln scan (dependency vulnerabilities)
 - `secrets`: Gitleaks (secret detection)
+- `secrets_trufflehog`: TruffleHog (secret detection)
 - `iac`: Checkov (IaC misconfiguration)
 - `dast`: OWASP ZAP Baseline (web runtime scan)
 - `iast`: IAST-lite runtime checks (security headers)
@@ -26,7 +28,9 @@ DevSecKit/
 ├── scanners/
 │   ├── sast/semgrep.sh
 │   ├── sca/dependencycheck.sh
+│   ├── sca/trivy.sh
 │   ├── secrets/gitleaks.sh
+│   ├── secrets/trufflehog.sh
 │   ├── iac/checkov.sh
 │   ├── dast/zap.sh
 │   └── iast/iast.sh
@@ -54,8 +58,10 @@ Interactive flow:
 Install only the tools you plan to run:
 
 - Semgrep: `pipx install semgrep`
-- Gitleaks: install from [gitleaks releases](https://github.com/gitleaks/gitleaks)
-- Dependency-Check: install from [OWASP Dependency-Check](https://jeremylong.github.io/DependencyCheck/)
+- Dependency-Check: [OWASP Dependency-Check](https://jeremylong.github.io/DependencyCheck/)
+- Trivy: `brew install trivy`
+- Gitleaks: [gitleaks releases](https://github.com/gitleaks/gitleaks)
+- TruffleHog: `brew install trufflehog`
 - Checkov: `pipx install checkov`
 - DAST: Docker (for OWASP ZAP container)
 - IAST-lite: Python 3 + curl

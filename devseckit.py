@@ -205,6 +205,56 @@ def parse_gitleaks(report_path: Path) -> list[Finding]:
     return findings
 
 
+def parse_trufflehog(report_path: Path) -> list[Finding]:
+    if not report_path.exists():
+        return []
+    findings: list[Finding] = []
+    with report_path.open(encoding="utf-8", errors="ignore") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+            except Exception:
+                continue
+
+            detector = item.get("DetectorName", "TruffleHog")
+            verified = bool(item.get("Verified", False))
+            confidence = "HIGH" if verified else "MEDIUM"
+            severity = "CRITICAL" if verified else "HIGH"
+
+            file_path = "N/A"
+            line_no = "N/A"
+            source_meta = item.get("SourceMetadata", {}) or {}
+            data = source_meta.get("Data", {}) if isinstance(source_meta, dict) else {}
+            fs_meta = data.get("Filesystem", {}) if isinstance(data, dict) else {}
+            if isinstance(fs_meta, dict):
+                file_path = fs_meta.get("file", "N/A")
+                line_no = str(fs_meta.get("line", "N/A"))
+
+            redacted = str(item.get("Redacted", "") or item.get("Raw", ""))[:500]
+            refs = [f"verified={str(verified).lower()}"]
+            findings.append(
+                build_finding(
+                    scan_type="SECRETS_TRUFFLEHOG",
+                    rule_id=f"trufflehog.{str(detector).lower().replace(' ', '-')}",
+                    rule_name=f"{detector} secret detected",
+                    message=f"Potential secret detected by TruffleHog detector: {detector}.",
+                    severity=severity,
+                    confidence=confidence,
+                    target=file_path,
+                    file_path=file_path,
+                    line_number=line_no,
+                    code_snippet=redacted,
+                    why_risky="Exposed secrets can be used for unauthorized access, data exfiltration, or infrastructure compromise.",
+                    remediation_guidance="1) Revoke/rotate exposed credential immediately. 2) Remove secret from source and history. 3) Move credentials to secret manager. 4) Add push/CI secret scanning gates.",
+                    references=refs,
+                )
+            )
+    return findings
+
+
 def parse_dependency_check(_report_path: Path) -> list[Finding]:
     reports = sorted(REPORTS_DIR.glob("dependency-check-report*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not reports:
@@ -234,6 +284,45 @@ def parse_dependency_check(_report_path: Path) -> list[Finding]:
                     code_snippet=f"Dependency: {pkg}",
                     why_risky=details[:300] or "Vulnerable dependency increases exploitability in the software supply chain.",
                     remediation_guidance="1) Upgrade to a patched version. 2) Pin dependency versions. 3) Review transitive dependencies. 4) Enforce CVE policy gates in CI/CD.",
+                    references=refs,
+                )
+            )
+    return findings
+
+
+def parse_trivy(report_path: Path) -> list[Finding]:
+    if not report_path.exists():
+        return []
+    data = json.loads(report_path.read_text(encoding="utf-8"))
+    findings: list[Finding] = []
+    for result in data.get("Results", []) or []:
+        target = result.get("Target", "dependency-scan")
+        vuln_list = result.get("Vulnerabilities", []) or []
+        for vuln in vuln_list:
+            vuln_id = vuln.get("VulnerabilityID", "TRIVY-VULN")
+            pkg = vuln.get("PkgName", "package")
+            installed = vuln.get("InstalledVersion", "unknown")
+            fixed = vuln.get("FixedVersion", "N/A")
+            title = vuln.get("Title", vuln.get("Description", "Dependency vulnerability"))
+            refs = []
+            primary_url = vuln.get("PrimaryURL")
+            if primary_url:
+                refs.append(str(primary_url))
+            refs.extend([str(r) for r in (vuln.get("References") or [])[:4]])
+            findings.append(
+                build_finding(
+                    scan_type="SCA_TRIVY",
+                    rule_id=vuln_id,
+                    rule_name=title[:120],
+                    message=(vuln.get("Description") or title or "Known vulnerable component detected.")[:300],
+                    severity=normalize_severity(vuln.get("Severity", "MEDIUM")),
+                    confidence="HIGH",
+                    target=target,
+                    file_path=target,
+                    line_number="N/A",
+                    code_snippet=f"{pkg} {installed} (fixed: {fixed})",
+                    why_risky=f"Dependency {pkg}@{installed} is associated with known vulnerabilities that may be exploitable.",
+                    remediation_guidance="1) Upgrade to fixed version. 2) Verify transitive dependency paths. 3) Add SCA policy gate in CI to block vulnerable versions.",
                     references=refs,
                 )
             )
@@ -302,27 +391,68 @@ def parse_checkov(report_path: Path) -> list[Finding]:
                 if isinstance(section_failed, list):
                     checks.extend([c for c in section_failed if isinstance(c, dict)])
 
+    remediation_by_rule = {
+        "CKV_DOCKER_2": "1) Add a HEALTHCHECK instruction that validates app responsiveness. 2) Ensure it fails fast for unhealthy containers. 3) Validate restart behavior in orchestrator.",
+        "CKV_DOCKER_3": "1) Create a non-root user in the image. 2) Switch to it with USER. 3) Verify file permissions required by the app.",
+    }
+
+    risk_by_rule = {
+        "CKV_DOCKER_2": "Without HEALTHCHECK, orchestrators may keep serving unhealthy containers, increasing outage and security detection blind spots.",
+        "CKV_DOCKER_3": "Running containers as root increases blast radius if the application is compromised.",
+    }
+
+    def normalize_iac_path(path: str) -> str:
+        p = (path or "").strip()
+        if p.startswith("/src/"):
+            parts = p.split("/", 3)
+            if len(parts) >= 4:
+                return "/" + parts[3]
+        if p.startswith("/rever_"):
+            parts = p.split("/", 2)
+            if len(parts) >= 3:
+                return "/" + parts[2]
+        return p or "iac"
+
+    def normalize_iac_severity(raw: str | None, rule_id: str) -> str:
+        sev = normalize_severity(raw or "UNKNOWN")
+        if sev == "UNKNOWN":
+            if rule_id in {"CKV_DOCKER_2", "CKV_DOCKER_3"}:
+                return "MEDIUM"
+            return "MEDIUM"
+        return sev
+
     for item in checks:
-        sev = normalize_severity(item.get("severity", "MEDIUM"))
+        rule_id = item.get("check_id", "checkov.generic")
+        sev = normalize_iac_severity(item.get("severity"), rule_id)
         title = item.get("check_name", item.get("check_id", "IaC issue"))
-        file_path = item.get("file_path", "iac")
+        file_path = normalize_iac_path(item.get("file_path", "iac"))
         line_range = item.get("file_line_range", ["?"])
         line_number = str(line_range[0]) if line_range else "?"
-        details = item.get("guideline", "") or item.get("check_id", "")
+        guideline = item.get("guideline", "") or ""
         snippet = ""
         code_block = item.get("code_block", [])
         if isinstance(code_block, list):
             snippet_lines: list[str] = []
             for line in code_block[:6]:
                 if isinstance(line, list) and len(line) > 1:
-                    snippet_lines.append(str(line[1]).rstrip())
+                    snippet_lines.append(f"{line[0]}: {str(line[1]).rstrip()}")
                 elif isinstance(line, str):
                     snippet_lines.append(line.rstrip())
             snippet = "\n".join(snippet_lines)
+        why_risky = risk_by_rule.get(
+            rule_id,
+            "This infrastructure setting weakens security controls and may increase exposure to unauthorized access or lateral movement.",
+        )
+        remediation = remediation_by_rule.get(
+            rule_id,
+            "1) Review this resource against least-privilege and secure-default practices. 2) Apply the required policy setting in IaC. 3) Re-run Checkov before deployment.",
+        )
+        if guideline:
+            remediation = f"{remediation} Reference: {guideline}"
         findings.append(
             build_finding(
                 scan_type="IAC",
-                rule_id=item.get("check_id", "checkov.generic"),
+                rule_id=rule_id,
                 rule_name=title,
                 message=title,
                 severity=sev,
@@ -331,10 +461,9 @@ def parse_checkov(report_path: Path) -> list[Finding]:
                 file_path=file_path,
                 line_number=line_number,
                 code_snippet=snippet,
-                why_risky=item.get("check_name", "Infrastructure configuration may expose assets or weaken controls."),
-                remediation_guidance=details
-                or "1) Apply least privilege and secure defaults. 2) Restrict network exposure. 3) Re-run policy checks before deployment.",
-                references=[item.get("check_id", "")] if item.get("check_id") else [],
+                why_risky=why_risky,
+                remediation_guidance=remediation,
+                references=[rule_id] if rule_id else [],
             )
         )
     return findings
@@ -413,7 +542,7 @@ def ask_target() -> tuple[Path, str | None]:
 
 
 def ask_scans() -> list[str]:
-    menu = ["sast", "sca", "secrets", "iac", "dast", "iast"]
+    menu = ["sast", "sca", "sca_trivy", "secrets", "secrets_trufflehog", "iac", "dast", "iast"]
     print(c("\nAvailable scan types:", Color.BLUE))
     for i, item in enumerate(menu, start=1):
         print(f"{i}) {item}")
@@ -536,6 +665,16 @@ def main() -> int:
             ["dependency-check|docker"],
             "Install OWASP Dependency-Check or use Docker (`owasp/dependency-check` image).",
         ),
+        "sca_trivy": ScanDef(
+            "sca_trivy",
+            "SCA (Trivy)",
+            ROOT / "scanners/sca/trivy.sh",
+            False,
+            "reports/trivy-sca.json",
+            parse_trivy,
+            ["trivy|docker"],
+            "Install Trivy (`brew install trivy`) or use Docker (`aquasec/trivy`).",
+        ),
         "secrets": ScanDef(
             "secrets",
             "Secrets (Gitleaks)",
@@ -545,6 +684,16 @@ def main() -> int:
             parse_gitleaks,
             ["gitleaks|docker"],
             "Install Gitleaks or use Docker (`ghcr.io/gitleaks/gitleaks`).",
+        ),
+        "secrets_trufflehog": ScanDef(
+            "secrets_trufflehog",
+            "Secrets (TruffleHog)",
+            ROOT / "scanners/secrets/trufflehog.sh",
+            False,
+            "reports/trufflehog.json",
+            parse_trufflehog,
+            ["trufflehog|docker"],
+            "Install TruffleHog (`brew install trufflehog`) or use Docker (`trufflesecurity/trufflehog`).",
         ),
         "iac": ScanDef(
             "iac",
