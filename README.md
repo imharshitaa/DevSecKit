@@ -1,28 +1,86 @@
 # DevSecKit
 
-DevSecKit is a terminal-based DevSecOps scanner orchestrator.
+DevSecKit is a terminal-first DevSecOps scanner orchestrator for running SAST, SCA, Secrets, IaC, DAST, and IAST workflows from one CLI command.
 
-It can:
-- ask whether you want to scan a local source folder or a remote repository
-- clone repository code automatically (when repo mode is selected)
-- run security scan workflows individually or all at once
-- print readable, colorized findings with severity and location
-- generate a combined machine-readable report at `reports/combined_report.json`
+## Demo
 
-## Supported scan workflows
+- GitHub Pages demo: `https://imharshitaa.github.io/DevSecKit/demo/`
+- Demo source: [demo/index.html](/Users/harshitaaa/Projects/DevSecKit/demo/index.html)
 
-- `sast`: Semgrep (static code analysis)
-- `sca`: Dependency-Check + Trivy (dependency vulnerabilities)
-- `secrets`: Gitleaks + TruffleHog (secret detection)
-- `iac`: Checkov (IaC misconfiguration)
-- `dast`: OWASP ZAP Baseline (web runtime scan)
-- `iast`: IAST-lite runtime checks (security headers)
+## Command
 
-## Project structure
+Use `devsec` (wrapper for `devseckit.py`):
+
+```bash
+./devsec
+```
+
+You can still run directly:
+
+```bash
+./devseckit.py
+```
+
+## Scan Categories
+
+- `sast`: Semgrep
+- `sca`: Dependency-Check + Trivy
+- `secrets`: Gitleaks + TruffleHog
+- `iac`: Checkov
+- `dast`: OWASP ZAP baseline
+- `iast`: Runtime header/cookie checks
+
+## Input Flow (After Cloning)
+
+1. Choose target mode:
+   - `Scan local source directory`
+   - `Scan remote directory (provide the git URL)`
+2. Choose scan type(s): `sast`, `sca`, `secrets`, `iac`, `dast`, `iast`, or `all`
+3. If `dast`/`iast` selected, provide running target URL.
+4. Review terminal report + JSON report in `reports/combined_report.json`.
+
+## Setup
+
+### 1) Clone and enter project
+
+```bash
+git clone https://github.com/imharshitaa/DevSecKit.git
+cd DevSecKit
+chmod +x devsec devseckit.py scanners/**/**/*.sh
+```
+
+### 2) Install tools (only what you need)
+
+- Semgrep: `pipx install semgrep`
+- Trivy: `brew install trivy`
+- Dependency-Check: install from [OWASP Dependency-Check](https://jeremylong.github.io/DependencyCheck/)
+- Gitleaks: install from [gitleaks releases](https://github.com/gitleaks/gitleaks)
+- TruffleHog: `brew install trufflehog`
+- Checkov: `pipx install checkov`
+- DAST: Docker Desktop
+- IAST-lite: Python 3
+
+### 3) Run
+
+```bash
+./devsec
+```
+
+## Sample Git Targets
+
+- `https://github.com/juice-shop/juice-shop`
+- `https://github.com/WebGoat/WebGoat`
+- `https://github.com/digininja/DVWA`
+- `https://github.com/OWASP/NodeGoat`
+
+## Technical Working Structure
 
 ```text
 DevSecKit/
-├── devseckit.py
+├── devsec                        # primary launcher command
+├── devseckit.py                  # orchestrator + parser + report formatter
+├── demo/
+│   └── index.html                # terminal-style GitHub Pages demo
 ├── scanners/
 │   ├── sast/semgrep.sh
 │   ├── sca/dependencycheck.sh
@@ -32,40 +90,27 @@ DevSecKit/
 │   ├── iac/checkov.sh
 │   ├── dast/zap.sh
 │   └── iast/iast.sh
-├── reports/
-└── targets/
+├── reports/                      # generated scanner outputs + combined report
+└── targets/                      # cloned remote repositories for scanning
 ```
 
-## Usage
+## Blueprint
 
-Run the terminal tool:
-
-```bash
-./devseckit.py
-```
-
-Interactive flow:
-1. Choose target mode: local source or repository clone.
-2. Provide path or git URL.
-3. Choose scan types (`all` or selected types).
-4. Provide URL if DAST/IAST is selected.
-5. View formatted results and open combined report JSON.
-
-## Tool prerequisites
-
-Install only the tools you plan to run:
-
-- Semgrep: `pipx install semgrep`
-- Dependency-Check: [OWASP Dependency-Check](https://jeremylong.github.io/DependencyCheck/)
-- Trivy: `brew install trivy`
-- Gitleaks: [gitleaks releases](https://github.com/gitleaks/gitleaks)
-- TruffleHog: `brew install trufflehog`
-- Checkov: `pipx install checkov`
-- DAST: Docker (for OWASP ZAP container)
-- IAST-lite: Python 3 + curl
+1. Target acquisition layer
+   - local path scan or remote git clone into `targets/`
+2. Category orchestration layer
+   - grouped categories run one or more tool scripts (e.g., `sca` runs both DC + Trivy)
+3. Execution & resilience layer
+   - preflight checks, per-tool execution, continue-on-failure behavior
+4. Parsing & normalization layer
+   - converts tool-native JSON output into unified security findings format
+5. Reporting layer
+   - terminal report with severity + location + remediation
+   - machine-readable `reports/combined_report.json`
 
 ## Notes
 
-- If one scan fails (missing tool, runtime issue), DevSecKit continues with other scans.
-- Scan outputs are written to `reports/`.
-- Repositories scanned in clone mode are stored in `targets/`.
+- If one scanner fails, others continue.
+- Reports are generated under `reports/`.
+- For DAST/IAST, target app must be running and reachable.
+- If Docker socket permissions fail, run scanners with local binaries or fix Docker access.

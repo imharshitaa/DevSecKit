@@ -578,7 +578,7 @@ def parse_iast(report_path: Path) -> list[Finding]:
 
 def ask_target() -> tuple[Path, str | None]:
     print(c("1) Scan local source directory", Color.BLUE))
-    print(c("2) Scan remote repository (clone first)", Color.BLUE))
+    print(c("2) Scan remote directory (provide the git URL)", Color.BLUE))
     choice = input("Select target mode [1/2]: ").strip()
 
     if choice == "2":

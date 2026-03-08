@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DevSecKit Demo</title>
+  <style>
+    :root {
+      --bg: #070a12;
+      --panel: #0d1222;
+      --border: #202a45;
+      --text: #c8d3e7;
+      --muted: #8893a8;
+      --running: #4ade80;
+      --vuln: #ef4444;
+      --other: #b58cff;
+      --cmd: #f59e0b;
+      --prompt-r: #ef4444;
+      --prompt-y: #f59e0b;
+      --prompt-g: #22c55e;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 24px;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 15% 0%, #131b33, #070a12 50%);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .terminal {
+      width: min(1200px, 100%);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      background: #020611;
+      box-shadow: 0 24px 55px rgba(0, 0, 0, 0.45);
+    }
+
+    .bar {
+      height: 44px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--muted);
+    }
+
+    .dot { width: 12px; height: 12px; border-radius: 999px; }
+    .r { background: #fb5f57; }
+    .y { background: #fbbd2d; }
+    .g { background: #28c840; }
+
+    .screen {
+      min-height: 75vh;
+      max-height: 75vh;
+      overflow: auto;
+      padding: 0 18px 18px 18px;
+      line-height: 1.48;
+      white-space: pre-wrap;
+    }
+    #logs { margin: 0; padding: 0; }
+
+    .line { color: var(--text); }
+    .muted { color: var(--muted); }
+    .running { color: var(--running); }
+    .vuln { color: var(--vuln); }
+    .other { color: var(--other); }
+    .cmd { color: var(--cmd); font-weight: 700; }
+
+    .input-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 0;
+    }
+
+    .prompt {
+      min-width: 42px;
+      font-weight: 700;
+    }
+    .prompt .p1 { color: var(--prompt-r); }
+    .prompt .p2 { color: var(--prompt-y); }
+    .prompt .p3 { color: var(--prompt-g); }
+
+    .input {
+      border: 0;
+      outline: 0;
+      width: 100%;
+      background: transparent;
+      color: var(--cmd);
+      font: inherit;
+      caret-color: var(--cmd);
+    }
+
+    a { color: #9fb7ff; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="terminal">
+    <div class="bar">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span>DevSecKit Demo Terminal</span>
+    </div>
+    <div class="screen" id="screen">
+      <div id="logs"></div>
+      <div class="input-line">
+        <span class="prompt"><span class="p1">&gt;</span><span class="p2">&gt;</span><span class="p3">&gt;</span></span>
+        <input id="cmd" class="input" autocomplete="off" spellcheck="false" placeholder="devsec" />
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const logs = document.getElementById('logs');
+    const screen = document.getElementById('screen');
+    const cmd = document.getElementById('cmd');
+    let running = false;
+    let awaitingGitChoice = false;
+    let selectedRepo = '';
+    const repoOptions = {
+      '1': 'https://github.com/juice-shop/juice-shop',
+      '2': 'https://github.com/WebGoat/WebGoat',
+      '3': 'https://github.com/digininja/DVWA',
+      '4': 'https://github.com/OWASP/NodeGoat',
+    };
+
+    function line(text, cls='line') {
+      const el = document.createElement('div');
+      el.className = `line ${cls}`;
+      el.textContent = text;
+      logs.appendChild(el);
+      screen.scrollTop = screen.scrollHeight;
+    }
+
+    function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+    function prelude() {
+      logs.innerHTML = '';
+      line('DevSecKit - Terminal DevSecOps Scanner', 'other');
+      line('Demo URL: https://imharshitaa.github.io/DevSecKit/demo/', 'muted');
+      line('Project: https://github.com/imharshitaa/DevSecKit', 'muted');
+      line('Run command: devsec', 'muted');
+      line('Sample Inputs (Git URLs):', 'muted');
+      line('  - https://github.com/juice-shop/juice-shop', 'muted');
+      line('  - https://github.com/WebGoat/WebGoat', 'muted');
+      line('  - https://github.com/digininja/DVWA', 'muted');
+      line('  - https://github.com/OWASP/NodeGoat', 'muted');
+      line('Type devsec and press Enter to run demo logs.', 'muted');
+    }
+
+    async function runDevsec() {
+      line('>>> devsec', 'cmd');
+      line('>>> choose which git to scan: [1] https://github.com/juice-shop/juice-shop [2] https://github.com/WebGoat/WebGoat [3] https://github.com/digininja/DVWA [4] https://github.com/OWASP/NodeGoat', 'cmd');
+      awaitingGitChoice = true;
+    }
+
+    async function runDevsecWithChoice(choice) {
+      selectedRepo = repoOptions[choice];
+      line(`>>> ${choice}`, 'cmd');
+      line(`Selected: ${selectedRepo}`, 'other');
+      line('');
+
+      line('================================================================================', 'other');
+      line('DEVSECOPS SECURITY PIPELINE', 'other');
+      line('Target Directory: ./NodeGoat', 'other');
+      line('Scan Start Time: 2026-03-08 21:44:01', 'other');
+      line('Modules: SAST | SCA | Secrets | IaC | DAST | IAST', 'other');
+      line('================================================================================', 'other');
+      line('');
+
+      line('[INIT] Loading security engines...', 'running');
+      line('[INIT] Rules loaded: 2,143', 'running');
+      line('[INIT] Dependency database updated', 'running');
+      line('[INIT] Secret detection patterns loaded', 'running');
+      line('[INIT] Infrastructure scanning enabled', 'running');
+      line('');
+
+      line('--------------------------------------------------------------------------------', 'other');
+      line('[SAST] STATIC APPLICATION SECURITY TESTING', 'other');
+      line('--------------------------------------------------------------------------------', 'other');
+      line('');
+      line('[SAST] Analyzing JavaScript source files...', 'running');
+      line('');
+      line('[INFO] Files analyzed: 128', 'other');
+      line('[INFO] Lines of code: 21,443', 'other');
+      line('');
+      line('[VULNERABILITY DETECTED]', 'vuln');
+      line('Type: SQL Injection', 'vuln');
+      line('File: app/routes/user.js', 'vuln');
+      line('Line: 87', 'vuln');
+      line('Code:', 'vuln');
+      line('db.query("SELECT * FROM users WHERE id=" + userInput)', 'vuln');
+      line('');
+      line('Severity: HIGH', 'vuln');
+      line('CWE: CWE-89', 'vuln');
+      line('');
+      line('[VULNERABILITY DETECTED]', 'vuln');
+      line('Type: Cross-Site Scripting', 'vuln');
+      line('File: views/profile.ejs', 'vuln');
+      line('Line: 42', 'vuln');
+      line('Code:', 'vuln');
+      line('<%= userInput %>', 'vuln');
+      line('');
+      line('Severity: MEDIUM', 'vuln');
+      line('CWE: CWE-79', 'vuln');
+      line('');
+      line('[SAST] Completed', 'running');
+      line('Findings: 2', 'running');
+      line('');
+
+      line('--------------------------------------------------------------------------------', 'other');
+      line('[SCA] SOFTWARE COMPOSITION ANALYSIS', 'other');
+      line('--------------------------------------------------------------------------------', 'other');
+      line('');
+      line('[SCA] Analyzing dependencies...', 'running');
+      line('');
+      line('[INFO] Dependencies detected: 54', 'other');
+      line('');
+      line('[VULNERABLE PACKAGE]', 'vuln');
+      line('Package: lodash', 'vuln');
+      line('Version: 4.17.10', 'vuln');
+      line('Vulnerability: Prototype Pollution', 'vuln');
+      line('Severity: HIGH', 'vuln');
+      line('CVE: CVE-2019-10744', 'vuln');
+      line('');
+      line('[VULNERABLE PACKAGE]', 'vuln');
+      line('Package: express', 'vuln');
+      line('Version: 4.15.0', 'vuln');
+      line('Vulnerability: Denial of Service', 'vuln');
+      line('Severity: MEDIUM', 'vuln');
+      line('CVE: CVE-2019-5413', 'vuln');
+      line('');
+      line('[SCA] Completed', 'running');
+      line('Vulnerable dependencies: 2', 'running');
+      line('');
+
+      line('--------------------------------------------------------------------------------', 'other');
+      line('[SECRETS] SECRET DETECTION', 'other');
+      line('--------------------------------------------------------------------------------', 'other');
+      line('');
+      line('[SCAN] Searching for exposed credentials...', 'running');
+      line('');
+      line('[SECRET DETECTED]', 'vuln');
+      line('Type: AWS Access Key', 'vuln');
+      line('File: config/config.js', 'vuln');
+      line('Line: 12', 'vuln');
+      line('Value: AKIAIOSFODNN7EXAMPLE', 'vuln');
+      line('');
+      line('Severity: CRITICAL', 'vuln');
+      line('');
+      line('[SECRET DETECTED]', 'vuln');
+      line('Type: Database Password', 'vuln');
+      line('File: config/db.js', 'vuln');
+      line('Line: 7', 'vuln');
+      line('Value: password = "admin123"', 'vuln');
+      line('');
+      line('Severity: HIGH', 'vuln');
+      line('');
+      line('[SECRETS] Completed', 'running');
+      line('Secrets detected: 2', 'running');
+      line('');
+
+      line('--------------------------------------------------------------------------------', 'other');
+      line('[IAC] INFRASTRUCTURE AS CODE SCAN', 'other');
+      line('--------------------------------------------------------------------------------', 'other');
+      line('');
+      line('[IAC] Scanning Terraform and Docker configurations...', 'running');
+      line('');
+      line('[VULNERABILITY DETECTED]', 'vuln');
+      line('File: terraform/main.tf', 'vuln');
+      line('');
+      line('Issue: Public S3 bucket enabled', 'vuln');
+      line('Resource: aws_s3_bucket.logs', 'vuln');
+      line('Configuration:', 'vuln');
+      line('acl = "public-read"', 'vuln');
+      line('');
+      line('Severity: HIGH', 'vuln');
+      line('');
+      line('[VULNERABILITY DETECTED]', 'vuln');
+      line('File: Dockerfile', 'vuln');
+      line('');
+      line('Issue: Running container as root', 'vuln');
+      line('Severity: MEDIUM', 'vuln');
+      line('');
+      line('[IAC] Completed', 'running');
+      line('Issues found: 2', 'running');
+      line('');
+
+      line('--------------------------------------------------------------------------------', 'other');
+      line('[DAST] DYNAMIC APPLICATION SECURITY TESTING', 'other');
+      line('--------------------------------------------------------------------------------', 'other');
+      line('');
+      line('[DAST] Starting web scanner', 'running');
+      line('Target: http://localhost:3000', 'other');
+      line('');
+      line('[TEST] SQL injection test', 'running');
+      line('Endpoint: /login', 'other');
+      line('');
+      line("Payload: ' OR '1'='1", 'other');
+      line('Result: Authentication bypass detected', 'vuln');
+      line('');
+      line('Severity: HIGH', 'vuln');
+      line('');
+      line('[TEST] XSS payload test', 'running');
+      line('Endpoint: /search', 'other');
+      line('');
+      line('Payload: <script>alert(1)<\\/script>', 'other');
+      line('Result: Payload reflected', 'vuln');
+      line('');
+      line('Severity: MEDIUM', 'vuln');
+      line('');
+      line('[DAST] Completed', 'running');
+      line('Vulnerabilities detected: 2', 'running');
+      line('');
+
+      line('--------------------------------------------------------------------------------', 'other');
+      line('[IAST] INTERACTIVE APPLICATION SECURITY TESTING', 'other');
+      line('--------------------------------------------------------------------------------', 'other');
+      line('');
+      line('[IAST] Instrumenting application runtime...', 'running');
+      line('');
+      line('[IAST] Monitoring database queries...', 'running');
+      line('');
+      line('[VULNERABILITY DETECTED]', 'vuln');
+      line('Type: SQL Injection', 'vuln');
+      line('Location: /login endpoint', 'vuln');
+      line('Runtime Trace:', 'vuln');
+      line('User input -> query builder -> database', 'vuln');
+      line('');
+      line('Severity: HIGH', 'vuln');
+      line('');
+      line('[IAST] Completed', 'running');
+      line('Issues detected: 1', 'running');
+      line('');
+
+      line('--------------------------------------------------------------------------------', 'other');
+      line('SCAN SUMMARY', 'other');
+      line('--------------------------------------------------------------------------------', 'other');
+      line('');
+      line('Target: NodeGoat', 'other');
+      line('Total Files Scanned: 128', 'other');
+      line('Dependencies Analyzed: 54', 'other');
+      line('');
+      line('Findings:', 'other');
+      line('');
+      line('CRITICAL: 1', 'vuln');
+      line('HIGH: 5', 'vuln');
+      line('MEDIUM: 3', 'vuln');
+      line('LOW: 0', 'vuln');
+      line('');
+      line('Top Issues:', 'other');
+      line(' - Hardcoded AWS Access Key', 'other');
+      line(' - SQL Injection vulnerability', 'other');
+      line(' - Prototype pollution dependency', 'other');
+      line(' - Public S3 bucket configuration', 'other');
+      line('');
+      line('Scan Duration: 02:14', 'other');
+      line('Pipeline Status: FAILED (security issues detected)', 'vuln');
+      line('');
+      line('================================================================================', 'other');
+      line('END OF SECURITY REPORT', 'other');
+      line('================================================================================', 'other');
+      line('');
+    }
+
+    cmd.addEventListener('keydown', async (e) => {
+      if (e.key !== 'Enter' || running) return;
+      const value = cmd.value.trim();
+      cmd.value = '';
+      if (!value) return;
+      if (awaitingGitChoice) {
+        if (!repoOptions[value]) {
+          line(`>>> ${value}`, 'cmd');
+          line('Invalid option. Choose 1, 2, 3, or 4.', 'other');
+          return;
+        }
+        running = true;
+        awaitingGitChoice = false;
+        await runDevsecWithChoice(value);
+        running = false;
+        return;
+      }
+      if (value !== 'devsec') {
+        line(`>>> ${value}`, 'cmd');
+        line('Unknown command. Use: devsec', 'other');
+        line('');
+        return;
+      }
+      running = true;
+      await runDevsec();
+      running = false;
+    });
+
+    prelude();
+  </script>
+</body>
+</html>
