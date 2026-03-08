@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>DevSecKit Demo</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
     :root {
       --bg: #070a12;
       --panel: #0d1222;
@@ -29,7 +31,7 @@
       place-items: center;
       background: radial-gradient(circle at 15% 0%, #131b33, #070a12 50%);
       color: var(--text);
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-family: "Share Tech Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
 
     .terminal {
@@ -61,13 +63,13 @@
       min-height: 75vh;
       max-height: 75vh;
       overflow: auto;
-      padding: 0 18px 18px 18px;
+      padding: 6px 18px 18px 18px;
       line-height: 1.48;
-      white-space: pre-wrap;
+      white-space: normal;
     }
     #logs { margin: 0; padding: 0; }
 
-    .line { color: var(--text); }
+    .line { color: var(--text); white-space: pre-wrap; margin: 0 0 2px 0; }
     .muted { color: var(--muted); }
     .running { color: var(--running); }
     .vuln { color: var(--vuln); }
@@ -122,6 +124,8 @@
     const screen = document.getElementById('screen');
     const cmd = document.getElementById('cmd');
     let running = false;
+    let animateLogs = false;
+    let logQueue = Promise.resolve();
     let awaitingGitChoice = false;
     let selectedRepo = '';
     const repoOptions = {
@@ -130,13 +134,157 @@
       '3': 'https://github.com/digininja/DVWA',
       '4': 'https://github.com/OWASP/NodeGoat',
     };
+    const repoProfiles = {
+      '1': {
+        name: 'juice-shop',
+        targetDir: './juice-shop',
+        files: '412',
+        loc: '86,210',
+        deps: '192',
+        summary: { critical: 2, high: 7, medium: 6, low: 1, duration: '03:11' },
+        top: ['Hardcoded JWT secret', 'NoSQL injection in login API', 'Prototype pollution package', 'Missing CSP header'],
+        sast: [
+          { type: 'NoSQL Injection', file: 'server/routes/login.ts', line: '101', code: "User.findOne({ email: req.body.email, password: req.body.password })", sev: 'HIGH', cwe: 'CWE-943' },
+          { type: 'Cross-Site Scripting', file: 'frontend/src/app/search.component.ts', line: '56', code: 'innerHTML = userQuery', sev: 'MEDIUM', cwe: 'CWE-79' },
+        ],
+        sca: [
+          { pkg: 'lodash', ver: '4.17.15', vuln: 'Prototype Pollution', sev: 'HIGH', cve: 'CVE-2020-8203' },
+          { pkg: 'jsonwebtoken', ver: '8.5.1', vuln: 'Insecure token validation', sev: 'MEDIUM', cve: 'CVE-2022-23540' },
+        ],
+        secrets: [
+          { type: 'JWT Secret', file: 'config/default.yml', line: '34', value: 'jwt.secret: "dev-secret-key"', sev: 'CRITICAL' },
+          { type: 'SMTP Password', file: 'docker/.env', line: '12', value: 'SMTP_PASSWORD=welcome123', sev: 'HIGH' },
+        ],
+        iac: [
+          { file: 'docker-compose.yml', issue: 'Database exposed publicly', resource: 'ports: "0.0.0.0:27017:27017"', sev: 'HIGH' },
+          { file: 'Dockerfile', issue: 'Running container as root', resource: '', sev: 'MEDIUM' },
+        ],
+        dast: [
+          { test: 'NoSQL injection test', endpoint: '/rest/user/login', payload: '{"email":{"$ne":null},"password":{"$ne":null}}', result: 'Authentication bypass detected', sev: 'HIGH' },
+          { test: 'XSS payload test', endpoint: '/#/search?q=', payload: '<script>alert(1)<\\/script>', result: 'Payload reflected in search view', sev: 'MEDIUM' },
+        ],
+        iast: [
+          { type: 'Injection sink reached', location: '/rest/user/login', trace: 'request body -> query object -> Mongo driver', sev: 'HIGH' },
+        ],
+      },
+      '2': {
+        name: 'WebGoat',
+        targetDir: './WebGoat',
+        files: '539',
+        loc: '112,904',
+        deps: '211',
+        summary: { critical: 1, high: 6, medium: 8, low: 2, duration: '04:08' },
+        top: ['Hardcoded DB password', 'SQL Injection in lesson endpoint', 'Unsafe deserialization', 'Public admin actuator path'],
+        sast: [
+          { type: 'SQL Injection', file: 'src/main/java/org/owasp/webgoat/lessons/sql/SqlLesson.java', line: '93', code: 'statement.executeQuery(query + userInput)', sev: 'HIGH', cwe: 'CWE-89' },
+          { type: 'Unsafe Deserialization', file: 'src/main/java/org/owasp/webgoat/lessons/deserialization/PayloadController.java', line: '44', code: 'new ObjectInputStream(request.getInputStream())', sev: 'HIGH', cwe: 'CWE-502' },
+        ],
+        sca: [
+          { pkg: 'spring-security-web', ver: '5.7.4', vuln: 'Authorization bypass', sev: 'HIGH', cve: 'CVE-2023-34035' },
+          { pkg: 'snakeyaml', ver: '1.30', vuln: 'Arbitrary code execution risk', sev: 'MEDIUM', cve: 'CVE-2022-1471' },
+        ],
+        secrets: [
+          { type: 'Database Password', file: 'src/main/resources/application.properties', line: '21', value: 'spring.datasource.password=webgoat', sev: 'HIGH' },
+          { type: 'Signing Key', file: 'src/main/resources/jwt.properties', line: '4', value: 'jwt.signing.key=changeit', sev: 'CRITICAL' },
+        ],
+        iac: [
+          { file: 'docker-compose.yml', issue: 'Container privileged mode enabled', resource: 'privileged: true', sev: 'HIGH' },
+          { file: 'Dockerfile', issue: 'No HEALTHCHECK defined', resource: '', sev: 'MEDIUM' },
+        ],
+        dast: [
+          { test: 'SQL injection test', endpoint: '/WebGoat/SqlInjection/attack', payload: "' OR '1'='1", result: 'Query manipulation confirmed', sev: 'HIGH' },
+          { test: 'Directory traversal test', endpoint: '/WebGoat/FileUpload/download', payload: '../../etc/passwd', result: 'Path traversal response observed', sev: 'MEDIUM' },
+        ],
+        iast: [
+          { type: 'Unsafe SQL construction', location: '/SqlInjection/attack', trace: 'HTTP param -> string concat -> JDBC execute', sev: 'HIGH' },
+        ],
+      },
+      '3': {
+        name: 'DVWA',
+        targetDir: './DVWA',
+        files: '87',
+        loc: '14,090',
+        deps: '43',
+        summary: { critical: 1, high: 4, medium: 4, low: 1, duration: '02:02' },
+        top: ['Default admin password', 'SQL Injection in vulnerable page', 'Reflected XSS path', 'Insecure PHP config'],
+        sast: [
+          { type: 'SQL Injection', file: 'vulnerabilities/sqli/source/low.php', line: '12', code: '$query = "SELECT * FROM users WHERE user_id = $id";', sev: 'HIGH', cwe: 'CWE-89' },
+          { type: 'Reflected XSS', file: 'vulnerabilities/xss_r/source/low.php', line: '8', code: "echo '<pre>Hello ' . $_GET['name'] . '</pre>'; ", sev: 'MEDIUM', cwe: 'CWE-79' },
+        ],
+        sca: [
+          { pkg: 'php', ver: '7.4.x', vuln: 'Multiple security issues', sev: 'HIGH', cve: 'CVE-2024-4577' },
+          { pkg: 'mysql-client', ver: '8.0.28', vuln: 'Privilege escalation', sev: 'MEDIUM', cve: 'CVE-2023-21980' },
+        ],
+        secrets: [
+          { type: 'Default Credential', file: 'config/config.inc.php', line: '23', value: "$DVWA['default_security_level'] = 'low';", sev: 'HIGH' },
+          { type: 'Database Password', file: 'config/config.inc.php', line: '13', value: "$DVWA['db_password'] = 'p@ssw0rd';", sev: 'CRITICAL' },
+        ],
+        iac: [
+          { file: 'docker-compose.yml', issue: 'MySQL root password in plaintext', resource: 'MYSQL_ROOT_PASSWORD=password', sev: 'HIGH' },
+          { file: 'Dockerfile', issue: 'Container user not specified', resource: '', sev: 'MEDIUM' },
+        ],
+        dast: [
+          { test: 'SQL injection test', endpoint: '/vulnerabilities/sqli/', payload: '1 OR 1=1', result: 'Dumped user table records', sev: 'HIGH' },
+          { test: 'XSS payload test', endpoint: '/vulnerabilities/xss_r/', payload: '<script>alert(1)<\\/script>', result: 'Payload reflected in HTML', sev: 'MEDIUM' },
+        ],
+        iast: [
+          { type: 'Unsanitized parameter flow', location: '/vulnerabilities/sqli/', trace: 'GET id -> SQL query string -> MySQL', sev: 'HIGH' },
+        ],
+      },
+      '4': {
+        name: 'NodeGoat',
+        targetDir: './NodeGoat',
+        files: '128',
+        loc: '21,443',
+        deps: '54',
+        summary: { critical: 1, high: 5, medium: 3, low: 0, duration: '02:14' },
+        top: ['Hardcoded AWS Access Key', 'SQL Injection vulnerability', 'Prototype pollution dependency', 'Public S3 bucket configuration'],
+        sast: [
+          { type: 'SQL Injection', file: 'app/routes/user.js', line: '87', code: 'db.query("SELECT * FROM users WHERE id=" + userInput)', sev: 'HIGH', cwe: 'CWE-89' },
+          { type: 'Cross-Site Scripting', file: 'views/profile.ejs', line: '42', code: '<%= userInput %>', sev: 'MEDIUM', cwe: 'CWE-79' },
+        ],
+        sca: [
+          { pkg: 'lodash', ver: '4.17.10', vuln: 'Prototype Pollution', sev: 'HIGH', cve: 'CVE-2019-10744' },
+          { pkg: 'express', ver: '4.15.0', vuln: 'Denial of Service', sev: 'MEDIUM', cve: 'CVE-2019-5413' },
+        ],
+        secrets: [
+          { type: 'AWS Access Key', file: 'config/config.js', line: '12', value: 'AKIAIOSFODNN7EXAMPLE', sev: 'CRITICAL' },
+          { type: 'Database Password', file: 'config/db.js', line: '7', value: 'password = "admin123"', sev: 'HIGH' },
+        ],
+        iac: [
+          { file: 'terraform/main.tf', issue: 'Public S3 bucket enabled', resource: 'aws_s3_bucket.logs | acl = "public-read"', sev: 'HIGH' },
+          { file: 'Dockerfile', issue: 'Running container as root', resource: '', sev: 'MEDIUM' },
+        ],
+        dast: [
+          { test: 'SQL injection test', endpoint: '/login', payload: "' OR '1'='1", result: 'Authentication bypass detected', sev: 'HIGH' },
+          { test: 'XSS payload test', endpoint: '/search', payload: '<script>alert(1)<\\/script>', result: 'Payload reflected', sev: 'MEDIUM' },
+        ],
+        iast: [
+          { type: 'SQL Injection', location: '/login endpoint', trace: 'User input -> query builder -> database', sev: 'HIGH' },
+        ],
+      },
+    };
 
     function line(text, cls='line') {
-      const el = document.createElement('div');
-      el.className = `line ${cls}`;
-      el.textContent = text;
-      logs.appendChild(el);
-      screen.scrollTop = screen.scrollHeight;
+      const append = () => {
+        const el = document.createElement('div');
+        el.className = `line ${cls}`;
+        el.textContent = text;
+        logs.appendChild(el);
+        screen.scrollTop = screen.scrollHeight;
+      };
+      if (!animateLogs) {
+        append();
+        return logQueue;
+      }
+      const delay = 18 + Math.floor(Math.random() * 42);
+      logQueue = logQueue.then(() => new Promise((resolve) => {
+        setTimeout(() => {
+          append();
+          resolve();
+        }, delay);
+      }));
+      return logQueue;
     }
 
     function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
@@ -161,213 +309,165 @@
       awaitingGitChoice = true;
     }
 
+    function section(title) {
+      line('--------------------------------------------------------------------------------', 'other');
+      line(title, 'other');
+      line('--------------------------------------------------------------------------------', 'other');
+    }
+
+    function blank() { line(''); }
+
     async function runDevsecWithChoice(choice) {
+      animateLogs = true;
+      logQueue = Promise.resolve();
       selectedRepo = repoOptions[choice];
+      const p = repoProfiles[choice];
       line(`>>> ${choice}`, 'cmd');
       line(`Selected: ${selectedRepo}`, 'other');
-      line('');
+      blank();
 
       line('================================================================================', 'other');
       line('DEVSECOPS SECURITY PIPELINE', 'other');
-      line('Target Directory: ./NodeGoat', 'other');
+      line(`Target Directory: ${p.targetDir}`, 'other');
       line('Scan Start Time: 2026-03-08 21:44:01', 'other');
       line('Modules: SAST | SCA | Secrets | IaC | DAST | IAST', 'other');
       line('================================================================================', 'other');
-      line('');
+      blank();
 
       line('[INIT] Loading security engines...', 'running');
       line('[INIT] Rules loaded: 2,143', 'running');
       line('[INIT] Dependency database updated', 'running');
       line('[INIT] Secret detection patterns loaded', 'running');
       line('[INIT] Infrastructure scanning enabled', 'running');
-      line('');
+      blank();
 
-      line('--------------------------------------------------------------------------------', 'other');
-      line('[SAST] STATIC APPLICATION SECURITY TESTING', 'other');
-      line('--------------------------------------------------------------------------------', 'other');
-      line('');
+      section('[SAST] STATIC APPLICATION SECURITY TESTING');
       line('[SAST] Analyzing JavaScript source files...', 'running');
-      line('');
-      line('[INFO] Files analyzed: 128', 'other');
-      line('[INFO] Lines of code: 21,443', 'other');
-      line('');
-      line('[VULNERABILITY DETECTED]', 'vuln');
-      line('Type: SQL Injection', 'vuln');
-      line('File: app/routes/user.js', 'vuln');
-      line('Line: 87', 'vuln');
-      line('Code:', 'vuln');
-      line('db.query("SELECT * FROM users WHERE id=" + userInput)', 'vuln');
-      line('');
-      line('Severity: HIGH', 'vuln');
-      line('CWE: CWE-89', 'vuln');
-      line('');
-      line('[VULNERABILITY DETECTED]', 'vuln');
-      line('Type: Cross-Site Scripting', 'vuln');
-      line('File: views/profile.ejs', 'vuln');
-      line('Line: 42', 'vuln');
-      line('Code:', 'vuln');
-      line('<%= userInput %>', 'vuln');
-      line('');
-      line('Severity: MEDIUM', 'vuln');
-      line('CWE: CWE-79', 'vuln');
-      line('');
+      blank();
+      line(`[INFO] Files analyzed: ${p.files}`, 'other');
+      line(`[INFO] Lines of code: ${p.loc}`, 'other');
+      blank();
+      for (const f of p.sast) {
+        line('[VULNERABILITY DETECTED]', 'vuln');
+        line(`Type: ${f.type}`, 'vuln');
+        line(`File: ${f.file}`, 'vuln');
+        line(`Line: ${f.line}`, 'vuln');
+        line('Code:', 'vuln');
+        line(f.code, 'vuln');
+        line(`Severity: ${f.sev}`, 'vuln');
+        line(`CWE: ${f.cwe}`, 'vuln');
+        blank();
+      }
       line('[SAST] Completed', 'running');
-      line('Findings: 2', 'running');
-      line('');
+      line(`Findings: ${p.sast.length}`, 'running');
+      blank();
 
-      line('--------------------------------------------------------------------------------', 'other');
-      line('[SCA] SOFTWARE COMPOSITION ANALYSIS', 'other');
-      line('--------------------------------------------------------------------------------', 'other');
-      line('');
+      section('[SCA] SOFTWARE COMPOSITION ANALYSIS');
       line('[SCA] Analyzing dependencies...', 'running');
-      line('');
-      line('[INFO] Dependencies detected: 54', 'other');
-      line('');
-      line('[VULNERABLE PACKAGE]', 'vuln');
-      line('Package: lodash', 'vuln');
-      line('Version: 4.17.10', 'vuln');
-      line('Vulnerability: Prototype Pollution', 'vuln');
-      line('Severity: HIGH', 'vuln');
-      line('CVE: CVE-2019-10744', 'vuln');
-      line('');
-      line('[VULNERABLE PACKAGE]', 'vuln');
-      line('Package: express', 'vuln');
-      line('Version: 4.15.0', 'vuln');
-      line('Vulnerability: Denial of Service', 'vuln');
-      line('Severity: MEDIUM', 'vuln');
-      line('CVE: CVE-2019-5413', 'vuln');
-      line('');
+      blank();
+      line(`[INFO] Dependencies detected: ${p.deps}`, 'other');
+      blank();
+      for (const d of p.sca) {
+        line('[VULNERABLE PACKAGE]', 'vuln');
+        line(`Package: ${d.pkg}`, 'vuln');
+        line(`Version: ${d.ver}`, 'vuln');
+        line(`Vulnerability: ${d.vuln}`, 'vuln');
+        line(`Severity: ${d.sev}`, 'vuln');
+        line(`CVE: ${d.cve}`, 'vuln');
+        blank();
+      }
       line('[SCA] Completed', 'running');
-      line('Vulnerable dependencies: 2', 'running');
-      line('');
+      line(`Vulnerable dependencies: ${p.sca.length}`, 'running');
+      blank();
 
-      line('--------------------------------------------------------------------------------', 'other');
-      line('[SECRETS] SECRET DETECTION', 'other');
-      line('--------------------------------------------------------------------------------', 'other');
-      line('');
+      section('[SECRETS] SECRET DETECTION');
       line('[SCAN] Searching for exposed credentials...', 'running');
-      line('');
-      line('[SECRET DETECTED]', 'vuln');
-      line('Type: AWS Access Key', 'vuln');
-      line('File: config/config.js', 'vuln');
-      line('Line: 12', 'vuln');
-      line('Value: AKIAIOSFODNN7EXAMPLE', 'vuln');
-      line('');
-      line('Severity: CRITICAL', 'vuln');
-      line('');
-      line('[SECRET DETECTED]', 'vuln');
-      line('Type: Database Password', 'vuln');
-      line('File: config/db.js', 'vuln');
-      line('Line: 7', 'vuln');
-      line('Value: password = "admin123"', 'vuln');
-      line('');
-      line('Severity: HIGH', 'vuln');
-      line('');
+      blank();
+      for (const s of p.secrets) {
+        line('[SECRET DETECTED]', 'vuln');
+        line(`Type: ${s.type}`, 'vuln');
+        line(`File: ${s.file}`, 'vuln');
+        line(`Line: ${s.line}`, 'vuln');
+        line(`Value: ${s.value}`, 'vuln');
+        line(`Severity: ${s.sev}`, 'vuln');
+        blank();
+      }
       line('[SECRETS] Completed', 'running');
-      line('Secrets detected: 2', 'running');
-      line('');
+      line(`Secrets detected: ${p.secrets.length}`, 'running');
+      blank();
 
-      line('--------------------------------------------------------------------------------', 'other');
-      line('[IAC] INFRASTRUCTURE AS CODE SCAN', 'other');
-      line('--------------------------------------------------------------------------------', 'other');
-      line('');
+      section('[IAC] INFRASTRUCTURE AS CODE SCAN');
       line('[IAC] Scanning Terraform and Docker configurations...', 'running');
-      line('');
-      line('[VULNERABILITY DETECTED]', 'vuln');
-      line('File: terraform/main.tf', 'vuln');
-      line('');
-      line('Issue: Public S3 bucket enabled', 'vuln');
-      line('Resource: aws_s3_bucket.logs', 'vuln');
-      line('Configuration:', 'vuln');
-      line('acl = "public-read"', 'vuln');
-      line('');
-      line('Severity: HIGH', 'vuln');
-      line('');
-      line('[VULNERABILITY DETECTED]', 'vuln');
-      line('File: Dockerfile', 'vuln');
-      line('');
-      line('Issue: Running container as root', 'vuln');
-      line('Severity: MEDIUM', 'vuln');
-      line('');
+      blank();
+      for (const i of p.iac) {
+        line('[VULNERABILITY DETECTED]', 'vuln');
+        line(`File: ${i.file}`, 'vuln');
+        line(`Issue: ${i.issue}`, 'vuln');
+        if (i.resource) line(`Resource: ${i.resource}`, 'vuln');
+        line(`Severity: ${i.sev}`, 'vuln');
+        blank();
+      }
       line('[IAC] Completed', 'running');
-      line('Issues found: 2', 'running');
-      line('');
+      line(`Issues found: ${p.iac.length}`, 'running');
+      blank();
 
-      line('--------------------------------------------------------------------------------', 'other');
-      line('[DAST] DYNAMIC APPLICATION SECURITY TESTING', 'other');
-      line('--------------------------------------------------------------------------------', 'other');
-      line('');
+      section('[DAST] DYNAMIC APPLICATION SECURITY TESTING');
       line('[DAST] Starting web scanner', 'running');
       line('Target: http://localhost:3000', 'other');
-      line('');
-      line('[TEST] SQL injection test', 'running');
-      line('Endpoint: /login', 'other');
-      line('');
-      line("Payload: ' OR '1'='1", 'other');
-      line('Result: Authentication bypass detected', 'vuln');
-      line('');
-      line('Severity: HIGH', 'vuln');
-      line('');
-      line('[TEST] XSS payload test', 'running');
-      line('Endpoint: /search', 'other');
-      line('');
-      line('Payload: <script>alert(1)<\\/script>', 'other');
-      line('Result: Payload reflected', 'vuln');
-      line('');
-      line('Severity: MEDIUM', 'vuln');
-      line('');
+      blank();
+      for (const d of p.dast) {
+        line(`[TEST] ${d.test}`, 'running');
+        line(`Endpoint: ${d.endpoint}`, 'other');
+        line(`Payload: ${d.payload}`, 'other');
+        line(`Result: ${d.result}`, 'vuln');
+        line(`Severity: ${d.sev}`, 'vuln');
+        blank();
+      }
       line('[DAST] Completed', 'running');
-      line('Vulnerabilities detected: 2', 'running');
-      line('');
+      line(`Vulnerabilities detected: ${p.dast.length}`, 'running');
+      blank();
 
-      line('--------------------------------------------------------------------------------', 'other');
-      line('[IAST] INTERACTIVE APPLICATION SECURITY TESTING', 'other');
-      line('--------------------------------------------------------------------------------', 'other');
-      line('');
+      section('[IAST] INTERACTIVE APPLICATION SECURITY TESTING');
       line('[IAST] Instrumenting application runtime...', 'running');
-      line('');
       line('[IAST] Monitoring database queries...', 'running');
-      line('');
-      line('[VULNERABILITY DETECTED]', 'vuln');
-      line('Type: SQL Injection', 'vuln');
-      line('Location: /login endpoint', 'vuln');
-      line('Runtime Trace:', 'vuln');
-      line('User input -> query builder -> database', 'vuln');
-      line('');
-      line('Severity: HIGH', 'vuln');
-      line('');
+      blank();
+      for (const i of p.iast) {
+        line('[VULNERABILITY DETECTED]', 'vuln');
+        line(`Type: ${i.type}`, 'vuln');
+        line(`Location: ${i.location}`, 'vuln');
+        line('Runtime Trace:', 'vuln');
+        line(i.trace, 'vuln');
+        line(`Severity: ${i.sev}`, 'vuln');
+        blank();
+      }
       line('[IAST] Completed', 'running');
-      line('Issues detected: 1', 'running');
-      line('');
+      line(`Issues detected: ${p.iast.length}`, 'running');
+      blank();
 
-      line('--------------------------------------------------------------------------------', 'other');
-      line('SCAN SUMMARY', 'other');
-      line('--------------------------------------------------------------------------------', 'other');
-      line('');
-      line('Target: NodeGoat', 'other');
-      line('Total Files Scanned: 128', 'other');
-      line('Dependencies Analyzed: 54', 'other');
-      line('');
+      section('SCAN SUMMARY');
+      line(`Target: ${p.name}`, 'other');
+      line(`Total Files Scanned: ${p.files}`, 'other');
+      line(`Dependencies Analyzed: ${p.deps}`, 'other');
+      blank();
       line('Findings:', 'other');
-      line('');
-      line('CRITICAL: 1', 'vuln');
-      line('HIGH: 5', 'vuln');
-      line('MEDIUM: 3', 'vuln');
-      line('LOW: 0', 'vuln');
-      line('');
+      blank();
+      line(`CRITICAL: ${p.summary.critical}`, 'vuln');
+      line(`HIGH: ${p.summary.high}`, 'vuln');
+      line(`MEDIUM: ${p.summary.medium}`, 'vuln');
+      line(`LOW: ${p.summary.low}`, 'vuln');
+      blank();
       line('Top Issues:', 'other');
-      line(' - Hardcoded AWS Access Key', 'other');
-      line(' - SQL Injection vulnerability', 'other');
-      line(' - Prototype pollution dependency', 'other');
-      line(' - Public S3 bucket configuration', 'other');
-      line('');
-      line('Scan Duration: 02:14', 'other');
+      for (const t of p.top) line(` - ${t}`, 'other');
+      blank();
+      line(`Scan Duration: ${p.summary.duration}`, 'other');
       line('Pipeline Status: FAILED (security issues detected)', 'vuln');
-      line('');
+      blank();
       line('================================================================================', 'other');
       line('END OF SECURITY REPORT', 'other');
       line('================================================================================', 'other');
-      line('');
+      blank();
+      await logQueue;
+      animateLogs = false;
     }
 
     cmd.addEventListener('keydown', async (e) => {
