@@ -5,7 +5,7 @@ DevSecKit is a terminal-first DevSecOps scanner orchestrator for running SAST, S
 ## Demo
 
 - GitHub Pages demo: `https://imharshitaa.github.io/DevSecKit/demo/`
-- Demo source: [demo/index.html](/Users/harshitaaa/Projects/DevSecKit/demo/index.html)
+- Demo source: https://imharshitaa.github.io/DevSecKit/demo/
 
 ## Command
 
