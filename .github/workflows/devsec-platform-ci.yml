@@ -1,0 +1,81 @@
+name: devsec-platform-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11"
+  SEMGREP_VERSION: "1.74.0"
+  TRIVY_VERSION: "0.52.2"
+  CHECKOV_VERSION: "3.2.86"
+  GITLEAKS_VERSION: "8.19.2"
+  TRUFFLEHOG_VERSION: "3.83.0"
+
+jobs:
+  devsec-orchestrated-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Cache Scanner Databases
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/trivy
+          key: ${{ runner.os }}-scanner-cache-${{ env.TRIVY_VERSION }}-${{ env.CHECKOV_VERSION }}
+
+      - name: Print pinned scanner versions
+        run: |
+          echo "Semgrep: ${SEMGREP_VERSION}"
+          echo "Trivy: ${TRIVY_VERSION}"
+          echo "Checkov: ${CHECKOV_VERSION}"
+          echo "Gitleaks: ${GITLEAKS_VERSION}"
+          echo "TruffleHog: ${TRUFFLEHOG_VERSION}"
+
+      - name: Run unit tests
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Run orchestrator API smoke check
+        env:
+          DEVSEC_API_TOKEN: ci-token
+        run: |
+          python -m devsec_platform.api > api.log 2>&1 &
+          API_PID=$!
+          sleep 2
+          curl -sS http://127.0.0.1:8787/health
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8787/api/v1/plugins)
+          test "$STATUS" = "401"
+          curl -sS -X POST http://127.0.0.1:8787/api/v1/scans \
+            -H 'Authorization: Bearer ci-token' \
+            -H 'content-type: application/json' \
+            -d '{"event_type":"pr","target":{"repo_url":"."},"requested_plugins":["sast","sca"],"context":{"internet_exposed":false},"roles":["security_engineer"],"actor":"ci-bot"}' \
+            > scan-output.json
+          python - <<'PY'
+          import json
+          d = json.load(open('scan-output.json'))
+          assert 'unified_risks' in d, d
+          assert 'executed_plugins' in d, d
+          assert isinstance(d['executed_plugins'], list), d
+          assert d['event_type'] == 'pr', d
+          print('Risks:', len(d['unified_risks']))
+          PY
+          kill "$API_PID"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: devsec-platform-results
+          path: |
+            scan-output.json
+            api.log
+            reports/audit/

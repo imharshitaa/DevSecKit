@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseckit.local/schemas/unified-risk.schema.json",
+  "title": "DevSec Unified Risk",
+  "type": "object",
+  "required": [
+    "risk_id",
+    "title",
+    "severity",
+    "exploitability_score",
+    "exposure_score",
+    "business_impact_score",
+    "composite_score",
+    "business_service",
+    "internet_exposed",
+    "correlated_findings",
+    "recommendation"
+  ],
+  "properties": {
+    "risk_id": {"type": "string"},
+    "title": {"type": "string"},
+    "severity": {"type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]},
+    "exploitability_score": {"type": "number", "minimum": 0, "maximum": 10},
+    "exposure_score": {"type": "number", "minimum": 0, "maximum": 10},
+    "business_impact_score": {"type": "number", "minimum": 0, "maximum": 10},
+    "composite_score": {"type": "number", "minimum": 0, "maximum": 10},
+    "business_service": {"type": "string"},
+    "internet_exposed": {"type": "boolean"},
+    "correlated_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "plugin_type": {"type": "string"},
+          "tool": {"type": "string"},
+          "file_path": {"type": "string"},
+          "line": {"type": ["integer", "null"]},
+          "severity": {"type": "string"}
+        },
+        "required": ["plugin_type", "tool", "file_path", "severity"]
+      }
+    },
+    "recommendation": {"type": "string"}
+  },
+  "additionalProperties": false
+}

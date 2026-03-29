@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "devseckit" ]]; then
+  shift
+  exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/devseckit" "$@"
+fi
+
+echo "Usage: run devseckit [args...]"
+exit 2

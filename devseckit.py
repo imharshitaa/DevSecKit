@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import tempfile
 from typing import Callable
 from urllib.parse import urlparse
 import shutil
@@ -60,6 +63,7 @@ class ScanDef:
     parser: Callable[[Path], list[Finding]]
     required_cmds: list[str]
     install_hint: str
+    timeout_seconds: int = 600
 
 
 def print_banner() -> None:
@@ -67,9 +71,12 @@ def print_banner() -> None:
     print(c("SAST | SCA | Secrets | IaC | DAST | IAST-lite\n", Color.DIM))
 
 
-def run_command(cmd: list[str]) -> tuple[int, str, str]:
-    proc = subprocess.run(cmd, text=True, capture_output=True, cwd=ROOT)
-    return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+def run_command(cmd: list[str], timeout_seconds: int | None = None) -> tuple[int, str, str]:
+    try:
+        proc = subprocess.run(cmd, text=True, capture_output=True, cwd=ROOT, timeout=timeout_seconds)
+        return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return 124, "", f"Timed out after {timeout_seconds}s"
 
 
 def severity_rank(level: str) -> int:
@@ -257,7 +264,8 @@ def parse_trufflehog(report_path: Path) -> list[Finding]:
 
 
 def parse_dependency_check(_report_path: Path) -> list[Finding]:
-    reports = sorted(REPORTS_DIR.glob("dependency-check-report*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    base = _report_path if _report_path.is_dir() else _report_path.parent
+    reports = sorted(base.glob("dependency-check-report*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not reports:
         return []
     data = json.loads(reports[0].read_text(encoding="utf-8"))
@@ -576,7 +584,7 @@ def parse_iast(report_path: Path) -> list[Finding]:
     return findings
 
 
-def ask_target() -> tuple[Path, str | None]:
+def ask_target() -> tuple[Path, str | None, bool]:
     print(c("1) Scan local source directory", Color.BLUE))
     print(c("2) Scan remote directory (provide the git URL)", Color.BLUE))
     choice = input("Select target mode [1/2]: ").strip()
@@ -585,22 +593,33 @@ def ask_target() -> tuple[Path, str | None]:
         repo_url = input("Enter git repository URL: ").strip()
         if not repo_url:
             raise ValueError("Repository URL is required.")
+        commit_sha = input("Optional commit SHA to pin (press Enter to skip): ").strip()
         parsed = urlparse(repo_url)
         repo_name = Path(parsed.path).stem or "target"
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         target_path = TARGETS_DIR / f"{repo_name}_{stamp}"
         TARGETS_DIR.mkdir(parents=True, exist_ok=True)
-        code, out, err = run_command(["git", "clone", repo_url, str(target_path)])
+        code, out, err = run_command(["git", "clone", "--depth", "1", repo_url, str(target_path)], timeout_seconds=300)
         if code != 0:
             raise RuntimeError(err or out or "git clone failed")
+        if commit_sha:
+            fetch_cmd = ["git", "-C", str(target_path), "fetch", "--depth", "1", "origin", commit_sha]
+            f_code, f_out, f_err = run_command(fetch_cmd, timeout_seconds=180)
+            if f_code != 0:
+                raise RuntimeError(f_err or f_out or f"failed to fetch commit {commit_sha}")
+            c_code, c_out, c_err = run_command(["git", "-C", str(target_path), "checkout", commit_sha], timeout_seconds=120)
+            if c_code != 0:
+                raise RuntimeError(c_err or c_out or f"failed to checkout commit {commit_sha}")
         print(c(f"Cloned repository to {target_path}", Color.GREEN))
-        return target_path, None
+        keep_clone = str(os.environ.get("DEVSECKIT_KEEP_CLONE", "")).lower() in {"1", "true", "yes"}
+        cleanup = not keep_clone
+        return target_path, None, cleanup
 
     path_str = input("Enter local source path: ").strip()
     target = Path(path_str).expanduser().resolve()
     if not target.exists() or not target.is_dir():
         raise ValueError("Source path must be an existing directory.")
-    return target, None
+    return target, None, False
 
 
 def ask_scans() -> list[str]:
@@ -680,7 +699,7 @@ def print_summary(findings: list[Finding]) -> None:
 
 def write_combined_report(target: Path, selected: list[str], findings: list[Finding], executions: list[dict[str, str]]) -> Path:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = REPORTS_DIR / "combined_report.json"
+    out_path = REPORTS_DIR / "scan_report.json"
     severity_summary: dict[str, int] = {}
     scan_summary: dict[str, int] = {}
     for f in findings:
@@ -705,103 +724,102 @@ def write_combined_report(target: Path, selected: list[str], findings: list[Find
 
 def main() -> int:
     print_banner()
-
-    scan_defs = {
-        "sast": ScanDef(
-            "sast",
-            "SAST (Semgrep)",
-            ROOT / "scanners/sast/semgrep.sh",
-            False,
-            "reports/semgrep.json",
-            parse_semgrep,
-            ["semgrep|docker"],
-            "Install Semgrep (`pipx install semgrep`) or run with Docker available.",
-        ),
-        "sca": ScanDef(
-            "sca",
-            "SCA (Dependency-Check)",
-            ROOT / "scanners/sca/dependencycheck.sh",
-            False,
-            "reports/dependency-check-report.json",
-            parse_dependency_check,
-            ["dependency-check|docker"],
-            "Install OWASP Dependency-Check or use Docker (`owasp/dependency-check` image).",
-        ),
-        "sca_trivy": ScanDef(
-            "sca_trivy",
-            "SCA (Trivy)",
-            ROOT / "scanners/sca/trivy.sh",
-            False,
-            "reports/trivy-sca.json",
-            parse_trivy,
-            ["trivy|docker"],
-            "Install Trivy (`brew install trivy`) or use Docker (`aquasec/trivy`).",
-        ),
-        "secrets": ScanDef(
-            "secrets",
-            "Secrets (Gitleaks)",
-            ROOT / "scanners/secrets/gitleaks.sh",
-            False,
-            "reports/gitleaks.json",
-            parse_gitleaks,
-            ["gitleaks|docker"],
-            "Install Gitleaks or use Docker (`ghcr.io/gitleaks/gitleaks`).",
-        ),
-        "secrets_trufflehog": ScanDef(
-            "secrets_trufflehog",
-            "Secrets (TruffleHog)",
-            ROOT / "scanners/secrets/trufflehog.sh",
-            False,
-            "reports/trufflehog.json",
-            parse_trufflehog,
-            ["trufflehog|docker"],
-            "Install TruffleHog (`brew install trufflehog`) or use Docker (`trufflesecurity/trufflehog`).",
-        ),
-        "iac": ScanDef(
-            "iac",
-            "IaC (Checkov)",
-            ROOT / "scanners/iac/checkov.sh",
-            False,
-            "reports/checkov.json",
-            parse_checkov,
-            ["checkov|docker"],
-            "Install Checkov (`pipx install checkov`) or use Docker (`bridgecrew/checkov`).",
-        ),
-        "dast": ScanDef(
-            "dast",
-            "DAST (ZAP baseline)",
-            ROOT / "scanners/dast/zap.sh",
-            True,
-            "reports/zap.json",
-            parse_zap,
-            ["docker"],
-            "Install Docker Desktop and start it; ensure your user can access the Docker socket.",
-        ),
-        "iast": ScanDef(
-            "iast",
-            "IAST-lite (Runtime header checks)",
-            ROOT / "scanners/iast/iast.sh",
-            True,
-            "reports/iast-lite.json",
-            parse_iast,
-            ["python3"],
-            "Install Python 3.",
-        ),
-    }
+    target: Path | None = None
+    cleanup_target = False
+    run_reports_dir: Path | None = None
 
     try:
-        target, _ = ask_target()
+        target, _, cleanup_target = ask_target()
         requested_scans = ask_scans()
         if not requested_scans:
             raise ValueError("No valid scan selected.")
 
+        run_reports_dir = Path(tempfile.mkdtemp(prefix="devseckit-run-"))
+
+        scan_defs = {
+            "sast": ScanDef(
+                "sast",
+                "SAST (Semgrep)",
+                ROOT / "scanners/sast/semgrep.sh",
+                False,
+                str(run_reports_dir / "semgrep.json"),
+                parse_semgrep,
+                ["semgrep|docker"],
+                "Install Semgrep (`pipx install semgrep`) or run with Docker available.",
+                timeout_seconds=600,
+            ),
+            "sca": ScanDef(
+                "sca",
+                "SCA (Trivy)",
+                ROOT / "scanners/sca/trivy.sh",
+                False,
+                str(run_reports_dir / "trivy-sca.json"),
+                parse_trivy,
+                ["trivy|docker"],
+                "Install Trivy (`brew install trivy`) or use Docker (`aquasec/trivy`).",
+                timeout_seconds=900,
+            ),
+            "secrets": ScanDef(
+                "secrets",
+                "Secrets (Gitleaks)",
+                ROOT / "scanners/secrets/gitleaks.sh",
+                False,
+                str(run_reports_dir / "gitleaks.json"),
+                parse_gitleaks,
+                ["gitleaks|docker"],
+                "Install Gitleaks or use Docker (`ghcr.io/gitleaks/gitleaks`).",
+                timeout_seconds=300,
+            ),
+            "secrets_trufflehog": ScanDef(
+                "secrets_trufflehog",
+                "Secrets (TruffleHog)",
+                ROOT / "scanners/secrets/trufflehog.sh",
+                False,
+                str(run_reports_dir / "trufflehog.json"),
+                parse_trufflehog,
+                ["trufflehog|docker"],
+                "Install TruffleHog (`brew install trufflehog`) or use Docker (`trufflesecurity/trufflehog`).",
+                timeout_seconds=360,
+            ),
+            "iac": ScanDef(
+                "iac",
+                "IaC (Checkov)",
+                ROOT / "scanners/iac/checkov.sh",
+                False,
+                str(run_reports_dir / "checkov.json"),
+                parse_checkov,
+                ["checkov|docker"],
+                "Install Checkov (`pipx install checkov`) or use Docker (`bridgecrew/checkov`).",
+                timeout_seconds=600,
+            ),
+            "dast": ScanDef(
+                "dast",
+                "DAST (ZAP baseline)",
+                ROOT / "scanners/dast/zap.sh",
+                True,
+                str(run_reports_dir / "zap.json"),
+                parse_zap,
+                ["docker"],
+                "Install Docker Desktop and start it; ensure your user can access the Docker socket.",
+                timeout_seconds=1200,
+            ),
+            "iast": ScanDef(
+                "iast",
+                "IAST-lite (Runtime header checks)",
+                ROOT / "scanners/iast/iast.sh",
+                True,
+                str(run_reports_dir / "iast-lite.json"),
+                parse_iast,
+                ["python3"],
+                "Install Python 3.",
+                timeout_seconds=180,
+            ),
+        }
+
         # Expand grouped scan types so each category runs all relevant tools.
         expanded: list[str] = []
         for key in requested_scans:
-            if key == "sca":
-                # Run Trivy first for fast actionable output, then Dependency-Check.
-                expanded.extend(["sca_trivy", "sca"])
-            elif key == "secrets":
+            if key == "secrets":
                 expanded.extend(["secrets", "secrets_trufflehog"])
             else:
                 expanded.append(key)
@@ -822,43 +840,56 @@ def main() -> int:
         all_findings: list[Finding] = []
         executions: list[dict[str, str]] = []
 
+        priority = {"secrets": 1, "secrets_trufflehog": 1, "sast": 2, "sca": 2, "iac": 3, "iast": 4, "dast": 5}
+        selected = sorted(selected, key=lambda k: priority.get(k, 9))
+
         for key in selected:
-            scan = scan_defs[key]
-            print(c(f"\nRunning {scan.name}...", Color.CYAN))
+            print(c(f"\nQueued {scan_defs[key].name}...", Color.CYAN))
+
+        def _run_scan(scan_key: str) -> tuple[str, int, str, str, list[Finding]]:
+            scan = scan_defs[scan_key]
             arg = url if scan.needs_url else str(target)
-            cmd = [str(scan.script), arg, scan.report_hint] if key != "sca" else [str(scan.script), arg, str(REPORTS_DIR)]
-            code, out, err = run_command(cmd)
-
-            executions.append(
-                {
-                    "scan": key,
-                    "status": "success" if code == 0 else "failed",
-                    "command": " ".join([shlex.quote(p) for p in cmd]),
-                    "stdout": out[-1000:],
-                    "stderr": err[-1000:],
-                }
-            )
-
-            if code == 0:
-                print(c(f"{scan.name} completed", Color.GREEN))
-            else:
-                print(c(f"{scan.name} failed (continuing).", Color.RED))
-                failure_text = err or out
-                if failure_text:
-                    print(c(failure_text.splitlines()[-1], Color.DIM))
-                if "docker.sock" in failure_text and "permission denied" in failure_text.lower():
-                    print(c("Docker permission issue detected. Start Docker Desktop and grant socket access.", Color.DIM))
-
+            cmd = [str(scan.script), arg, scan.report_hint]
+            code, out, err = run_command(cmd, timeout_seconds=scan.timeout_seconds)
+            parsed_findings: list[Finding] = []
             if code == 0:
                 try:
-                    report = ROOT / scan.report_hint
-                    all_findings.extend(scan.parser(report))
+                    parsed_findings = scan.parser(Path(scan.report_hint))
                 except Exception as parse_exc:
-                    print(c(f"Could not parse {scan.key} results: {parse_exc}", Color.YELLOW))
+                    err = (err + "\n" if err else "") + f"parse error: {parse_exc}"
+            return scan_key, code, out, err, parsed_findings
+
+        with ThreadPoolExecutor(max_workers=max(1, min(4, len(selected)))) as pool:
+            future_map = {pool.submit(_run_scan, key): key for key in selected}
+            for future in as_completed(future_map):
+                key, code, out, err, parsed = future.result()
+                scan = scan_defs[key]
+                executions.append(
+                    {
+                        "scan": key,
+                        "status": "success" if code == 0 else "failed",
+                        "command": " ".join([shlex.quote(p) for p in [str(scan.script), (url if scan.needs_url else str(target)), scan.report_hint]]),
+                        "stdout": out[-1000:],
+                        "stderr": err[-1000:],
+                    }
+                )
+                if code == 0:
+                    print(c(f"{scan.name} completed", Color.GREEN))
+                    all_findings.extend(parsed)
+                else:
+                    print(c(f"{scan.name} failed (continuing).", Color.RED))
+                    failure_text = err or out
+                    if failure_text:
+                        print(c(failure_text.splitlines()[-1], Color.DIM))
+                    if code == 124:
+                        print(c(f"{scan.name} hit timeout ({scan.timeout_seconds}s).", Color.DIM))
+                    if "docker.sock" in failure_text and "permission denied" in failure_text.lower():
+                        print(c("Docker permission issue detected. Start Docker Desktop and grant socket access.", Color.DIM))
 
         print_summary(all_findings)
         combined_report = write_combined_report(target, requested_scans, all_findings, executions)
-        print(c(f"\nDetailed JSON report: {combined_report}", Color.BLUE))
+        print(c(f"\nFinal scan report: {combined_report}", Color.BLUE))
+
         return 0
 
     except KeyboardInterrupt:
@@ -867,6 +898,12 @@ def main() -> int:
     except Exception as exc:
         print(c(f"\nError: {exc}", Color.RED))
         return 1
+    finally:
+        if run_reports_dir and run_reports_dir.exists():
+            shutil.rmtree(run_reports_dir, ignore_errors=True)
+        if cleanup_target and target and target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+            print(c(f"Cleaned up cloned target: {target}", Color.DIM))
 
 
 if __name__ == "__main__":

@@ -114,7 +114,7 @@
       <div id="logs"></div>
       <div class="input-line">
         <span class="prompt"><span class="p1">&gt;</span><span class="p2">&gt;</span><span class="p3">&gt;</span></span>
-        <input id="cmd" class="input" autocomplete="off" spellcheck="false" placeholder="devsec" />
+        <input id="cmd" class="input" autocomplete="off" spellcheck="false" placeholder="devseckit" />
       </div>
     </div>
   </div>
@@ -294,17 +294,18 @@
       line('DevSecKit - Terminal DevSecOps Scanner', 'other');
       line('Demo URL: https://imharshitaa.github.io/DevSecKit/demo/', 'muted');
       line('Project: https://github.com/imharshitaa/DevSecKit', 'muted');
-      line('Run command: devsec', 'muted');
+      line('Run command: run devseckit', 'muted');
+      line('Platform API: python3 -m devsec_platform.api', 'muted');
       line('Sample Inputs (Git URLs):', 'muted');
       line('  - https://github.com/juice-shop/juice-shop', 'muted');
       line('  - https://github.com/WebGoat/WebGoat', 'muted');
       line('  - https://github.com/digininja/DVWA', 'muted');
       line('  - https://github.com/OWASP/NodeGoat', 'muted');
-      line('Type devsec and press Enter to run demo logs.', 'muted');
+      line('Type devseckit and press Enter to run demo logs.', 'muted');
     }
 
     async function runDevsec() {
-      line('>>> devsec', 'cmd');
+      line('>>> devseckit', 'cmd');
       line('>>> choose which git to scan: [1] https://github.com/juice-shop/juice-shop [2] https://github.com/WebGoat/WebGoat [3] https://github.com/digininja/DVWA [4] https://github.com/OWASP/NodeGoat', 'cmd');
       awaitingGitChoice = true;
     }
@@ -487,9 +488,9 @@
         running = false;
         return;
       }
-      if (value !== 'devsec') {
+      if (value !== 'devseckit' && value !== 'devsec') {
         line(`>>> ${value}`, 'cmd');
-        line('Unknown command. Use: devsec', 'other');
+        line('Unknown command. Use: devseckit', 'other');
         line('');
         return;
       }

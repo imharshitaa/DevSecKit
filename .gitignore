@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Runtime scan outputs
+reports/*
+!reports/.gitkeep
+!reports/audit/
+!reports/audit/.gitkeep
+
+# Temporary scanner cache
+reports/.cache/
+
+# Cloned scan targets
+targets/*
+!targets/.gitkeep
+
+# Local env
+.env
+.venv/
+venv/

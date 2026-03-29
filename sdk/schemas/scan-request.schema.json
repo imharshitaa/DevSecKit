@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseckit.local/schemas/scan-request.schema.json",
+  "title": "DevSec Scan Request",
+  "type": "object",
+  "required": ["event_type", "target"],
+  "properties": {
+    "event_type": {
+      "type": "string",
+      "enum": ["pr", "deploy", "runtime"]
+    },
+    "target": {
+      "type": "object",
+      "required": ["repo_url"],
+      "properties": {
+        "repo_url": {"type": "string"},
+        "branch": {"type": "string", "default": "main"},
+        "commit_sha": {"type": ["string", "null"]},
+        "environment": {"type": "string", "default": "dev"},
+        "runtime_url": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "requested_plugins": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "string",
+        "enum": ["sast", "sca", "secrets", "iac", "cspm", "easm", "dast", "iast"]
+      }
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "business_service": {"type": "string"},
+        "deployment_tier": {"type": "string"},
+        "internet_exposed": {"type": "boolean"},
+        "data_classification": {"type": "string"},
+        "known_exploits": {"type": "boolean"},
+        "changed_files": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      },
+      "additionalProperties": true
+    },
+    "actor": {"type": "string"},
+    "roles": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "additionalProperties": false
+}

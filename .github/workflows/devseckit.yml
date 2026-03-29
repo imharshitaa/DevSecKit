@@ -19,52 +19,90 @@ on:
         required: true
         default: "."
 
-jobs:
-  security:
-    runs-on: ubuntu-latest
+env:
+  TRIVY_CACHE_DIR: ~/.cache/trivy
 
+jobs:
+  single-scan:
+    if: ${{ github.event.inputs.scan_type == 'sast' || github.event.inputs.scan_type == 'iac' || github.event.inputs.scan_type == 'dast' || github.event.inputs.scan_type == 'iast' }}
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Make scanner scripts executable
         run: chmod +x scanners/**/**/*.sh
 
-      - name: Run SAST
-        if: ${{ github.event.inputs.scan_type == 'sast' }}
-        run: scanners/sast/semgrep.sh ${{ github.event.inputs.target }} reports/semgrep.json
-
-      - name: Run SCA (Dependency-Check)
-        if: ${{ github.event.inputs.scan_type == 'sca' }}
-        run: scanners/sca/dependencycheck.sh ${{ github.event.inputs.target }} reports
-
-      - name: Run SCA (Trivy)
-        if: ${{ github.event.inputs.scan_type == 'sca' }}
-        run: scanners/sca/trivy.sh ${{ github.event.inputs.target }} reports/trivy-sca.json
-
-      - name: Run Secrets Scan (Gitleaks)
-        if: ${{ github.event.inputs.scan_type == 'secrets' }}
-        run: scanners/secrets/gitleaks.sh ${{ github.event.inputs.target }} reports/gitleaks.json
-
-      - name: Run Secrets Scan (TruffleHog)
-        if: ${{ github.event.inputs.scan_type == 'secrets' }}
-        run: scanners/secrets/trufflehog.sh ${{ github.event.inputs.target }} reports/trufflehog.json
-
-      - name: Run IaC Scan
-        if: ${{ github.event.inputs.scan_type == 'iac' }}
-        run: scanners/iac/checkov.sh ${{ github.event.inputs.target }} reports/checkov.json
-
-      - name: Run DAST
-        if: ${{ github.event.inputs.scan_type == 'dast' }}
-        run: scanners/dast/zap.sh ${{ github.event.inputs.target }} reports/zap.json
-
-      - name: Run IAST-lite
-        if: ${{ github.event.inputs.scan_type == 'iast' }}
-        run: scanners/iast/iast.sh ${{ github.event.inputs.target }} reports/iast-lite.json
+      - name: Run selected scanner
+        run: |
+          case "${{ github.event.inputs.scan_type }}" in
+            sast) scanners/sast/semgrep.sh "${{ github.event.inputs.target }}" reports/semgrep.json ;;
+            iac) scanners/iac/checkov.sh "${{ github.event.inputs.target }}" reports/checkov.json ;;
+            dast) scanners/dast/zap.sh "${{ github.event.inputs.target }}" reports/zap.json ;;
+            iast) scanners/iast/iast.sh "${{ github.event.inputs.target }}" reports/iast-lite.json ;;
+          esac
 
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: devseckit-reports
+          name: devseckit-reports-${{ github.event.inputs.scan_type }}
+          path: reports/
+
+  sca-matrix:
+    if: ${{ github.event.inputs.scan_type == 'sca' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [trivy]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache SCA data
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/trivy
+          key: ${{ runner.os }}-sca-${{ matrix.tool }}-${{ hashFiles('scanners/sca/*.sh') }}
+
+      - name: Make scanner scripts executable
+        run: chmod +x scanners/**/**/*.sh
+
+      - name: Run SCA tool
+        run: |
+          scanners/sca/trivy.sh "${{ github.event.inputs.target }}" reports/trivy-sca.json
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: devseckit-reports-sca-${{ matrix.tool }}
+          path: reports/
+
+  secrets-matrix:
+    if: ${{ github.event.inputs.scan_type == 'secrets' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [gitleaks, trufflehog]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make scanner scripts executable
+        run: chmod +x scanners/**/**/*.sh
+
+      - name: Run Secrets tool
+        run: |
+          if [[ "${{ matrix.tool }}" == "gitleaks" ]]; then
+            scanners/secrets/gitleaks.sh "${{ github.event.inputs.target }}" reports/gitleaks.json
+          else
+            scanners/secrets/trufflehog.sh "${{ github.event.inputs.target }}" reports/trufflehog.json
+          fi
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: devseckit-reports-secrets-${{ matrix.tool }}
           path: reports/
