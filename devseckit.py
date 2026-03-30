@@ -584,7 +584,7 @@ def parse_iast(report_path: Path) -> list[Finding]:
     return findings
 
 
-def ask_target() -> tuple[Path, str | None, bool]:
+def ask_target() -> tuple[Path, str, bool]:
     print(c("1) Scan local source directory", Color.BLUE))
     print(c("2) Scan remote directory (provide the git URL)", Color.BLUE))
     choice = input("Select target mode [1/2]: ").strip()
@@ -613,13 +613,13 @@ def ask_target() -> tuple[Path, str | None, bool]:
         print(c(f"Cloned repository to {target_path}", Color.GREEN))
         keep_clone = str(os.environ.get("DEVSECKIT_KEEP_CLONE", "")).lower() in {"1", "true", "yes"}
         cleanup = not keep_clone
-        return target_path, None, cleanup
+        return target_path, repo_url, cleanup
 
     path_str = input("Enter local source path: ").strip()
     target = Path(path_str).expanduser().resolve()
     if not target.exists() or not target.is_dir():
         raise ValueError("Source path must be an existing directory.")
-    return target, None, False
+    return target, "local://source", False
 
 
 def ask_scans() -> list[str]:
@@ -697,7 +697,7 @@ def print_summary(findings: list[Finding]) -> None:
             print(c(f"Refs       : {', '.join(f.references[:5])}", Color.DIM))
 
 
-def write_combined_report(target: Path, selected: list[str], findings: list[Finding], executions: list[dict[str, str]]) -> Path:
+def write_combined_report(target_label: str, selected: list[str], findings: list[Finding], executions: list[dict[str, str]]) -> Path:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = REPORTS_DIR / "scan_report.json"
     severity_summary: dict[str, int] = {}
@@ -708,7 +708,7 @@ def write_combined_report(target: Path, selected: list[str], findings: list[Find
         scan_summary[f.scan_type] = scan_summary.get(f.scan_type, 0) + 1
     payload = {
         "generated_at": datetime.utcnow().isoformat() + "Z",
-        "target": str(target),
+        "target": target_label,
         "selected_scans": selected,
         "summary": {
             "total_findings": len(findings),
@@ -725,11 +725,12 @@ def write_combined_report(target: Path, selected: list[str], findings: list[Find
 def main() -> int:
     print_banner()
     target: Path | None = None
+    target_label = "local://source"
     cleanup_target = False
     run_reports_dir: Path | None = None
 
     try:
-        target, _, cleanup_target = ask_target()
+        target, target_label, cleanup_target = ask_target()
         requested_scans = ask_scans()
         if not requested_scans:
             raise ValueError("No valid scan selected.")
@@ -887,7 +888,7 @@ def main() -> int:
                         print(c("Docker permission issue detected. Start Docker Desktop and grant socket access.", Color.DIM))
 
         print_summary(all_findings)
-        combined_report = write_combined_report(target, requested_scans, all_findings, executions)
+        combined_report = write_combined_report(target_label, requested_scans, all_findings, executions)
         print(c(f"\nFinal scan report: {combined_report}", Color.BLUE))
 
         return 0
