@@ -7,7 +7,7 @@ DevSecKit is a terminal-first DevSecOps toolkit with two layers:
 
 ## Quick Start
 
-- GitHub Pages demo: `https://imharshitaa.github.io/DevSecKit/demo/`
+- GitHub Pages demo: `https://imharshitaa.github.io/DevSecKit/product-page/`
 
 After cloning:
 
@@ -46,7 +46,7 @@ python3 -m devsec_platform.api
 
 Demo page:
 
-- [https://imharshitaa.github.io/DevSecKit/demo/](https://imharshitaa.github.io/DevSecKit/demo/)
+- [https://imharshitaa.github.io/DevSecKit/product-page/](https://imharshitaa.github.io/DevSecKit/product-page/)
 
 ## Platform Capabilities
 
@@ -71,7 +71,7 @@ DevSecKit/
 ├── devseckit                              # scanner launcher wrapper
 ├── devsec                                 # legacy scanner launcher wrapper
 ├── devseckit.py                           # terminal scanner orchestrator
-├── demo/
+├── product-page/
 │   ├── index.html                         # static GitHub Pages demo site
 │   ├── style.css                          # demo styling
 │   ├── app.js                             # demo interactivity (no backend calls)
@@ -206,12 +206,12 @@ It starts the API, executes a sample orchestrated scan, validates response shape
 
 ## Demo Notes
 
-The GitHub Pages demo (`demo/`) is a fully static site: plain HTML/CSS/vanilla JS,
+The GitHub Pages demo (`product-page/`) is a fully static site: plain HTML/CSS/vanilla JS,
 no backend, no API keys, no network calls. It includes:
 
 - An interactive terminal simulating `devseckit` commands (`help`, `--version`,
   `scan`, `platform --event pr`, `plugins list`, `risk summary`, `report show`)
-  against fixed sample data in `demo/fixtures.js`.
+  against fixed sample data in `product-page/fixtures.js`.
 - A filterable sample findings explorer, a plugin ecosystem grid, the real
   risk-scoring formula with a worked example, a remediation workflow diagram,
   and a static API request/response playground.
