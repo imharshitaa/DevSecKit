@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
+
+
+def utcnow_iso() -> str:
+    """UTC timestamp in the same naive 'YYYY-MM-DDTHH:MM:SS.ffffffZ' shape the project uses everywhere."""
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
 
 
 PLUGIN_TYPES = {"sast", "sca", "secrets", "iac", "cspm", "easm", "dast", "iast"}
@@ -119,7 +124,7 @@ class AuditEvent:
     resource: str
     status: str
     message: str
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    timestamp: str = field(default_factory=utcnow_iso)
 
 
 def to_dict(obj: Any) -> dict[str, Any]:

@@ -10,17 +10,17 @@ DevSecKit uses a standard plugin contract for SAST, SCA, Secrets, IaC, CSPM, EAS
 
 Plugin contract (Python):
 
-- Implement `SecurityPlugin` in [devsec_platform/plugins/base.py](/Users/harshitaaa/Projects/DevSecKit/devsec_platform/plugins/base.py).
-- Register plugin in [devsec_platform/plugins/registry.py](/Users/harshitaaa/Projects/DevSecKit/devsec_platform/plugins/registry.py).
+- Implement `SecurityPlugin` in [devsec_platform/plugins/base.py](../devsec_platform/plugins/base.py).
+- Register plugin in [devsec_platform/plugins/registry.py](../devsec_platform/plugins/registry.py).
 
 Node plugin examples:
 
-- [examples/node-plugin/trivy-sca-plugin.js](/Users/harshitaaa/Projects/DevSecKit/examples/node-plugin/trivy-sca-plugin.js)
-- [examples/node-plugin/server.js](/Users/harshitaaa/Projects/DevSecKit/examples/node-plugin/server.js)
+- [examples/node-plugin/trivy-sca-plugin.js](../examples/node-plugin/trivy-sca-plugin.js)
+- [examples/node-plugin/server.js](../examples/node-plugin/server.js)
 
 ## 2) Orchestrator (Rule-based + AI-assisted)
 
-Main orchestrator: [devsec_platform/orchestrator.py](/Users/harshitaaa/Projects/DevSecKit/devsec_platform/orchestrator.py)
+Main orchestrator: [devsec_platform/orchestrator.py](../devsec_platform/orchestrator.py)
 
 Execution logic:
 
@@ -35,7 +35,7 @@ Execution logic:
 
 ## 3) Risk Engine
 
-Risk correlation: [devsec_platform/risk_engine.py](/Users/harshitaaa/Projects/DevSecKit/devsec_platform/risk_engine.py)
+Risk correlation: [devsec_platform/risk_engine.py](../devsec_platform/risk_engine.py)
 
 Unified risk object scoring:
 
@@ -53,7 +53,7 @@ Context-aware modifiers include:
 
 ## 4) AI Module
 
-AI insights module: [devsec_platform/ai_module.py](/Users/harshitaaa/Projects/DevSecKit/devsec_platform/ai_module.py)
+AI insights module: [devsec_platform/ai_module.py](../devsec_platform/ai_module.py)
 
 Produces structured JSON:
 
@@ -64,7 +64,7 @@ Produces structured JSON:
 
 ## 5) Auto-remediation
 
-Remediation planning: [devsec_platform/remediation.py](/Users/harshitaaa/Projects/DevSecKit/devsec_platform/remediation.py)
+Remediation planning: [devsec_platform/remediation.py](../devsec_platform/remediation.py)
 
 Capabilities:
 
@@ -76,8 +76,8 @@ Capabilities:
 
 Guardrail modules:
 
-- RBAC: [devsec_platform/guardrails.py](/Users/harshitaaa/Projects/DevSecKit/devsec_platform/guardrails.py)
-- Audit logging: [devsec_platform/audit.py](/Users/harshitaaa/Projects/DevSecKit/devsec_platform/audit.py)
+- RBAC: [devsec_platform/guardrails.py](../devsec_platform/guardrails.py)
+- Audit logging: [devsec_platform/audit.py](../devsec_platform/audit.py)
 - Plan validation before remediation apply.
 - API token authentication is required for `/api/*` endpoints.
 - Auto-remediation apply is blocked unless plan is explicitly marked safe and passes strict path/type checks.

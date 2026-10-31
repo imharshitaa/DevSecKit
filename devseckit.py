@@ -9,7 +9,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
 from typing import Callable
@@ -707,7 +707,7 @@ def write_combined_report(target_label: str, selected: list[str], findings: list
         severity_summary[sev] = severity_summary.get(sev, 0) + 1
         scan_summary[f.scan_type] = scan_summary.get(f.scan_type, 0) + 1
     payload = {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z",
         "target": target_label,
         "selected_scans": selected,
         "summary": {

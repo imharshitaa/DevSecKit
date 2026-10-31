@@ -72,7 +72,10 @@ DevSecKit/
 ├── devsec                                 # legacy scanner launcher wrapper
 ├── devseckit.py                           # terminal scanner orchestrator
 ├── demo/
-│   └── index.html                         # terminal demo UI
+│   ├── index.html                         # static GitHub Pages demo site
+│   ├── style.css                          # demo styling
+│   ├── app.js                             # demo interactivity (no backend calls)
+│   └── fixtures.js                        # static sample data used by the demo
 ├── devsec_platform/
 │   ├── api.py                             # REST API server
 │   ├── orchestrator.py                    # rule + AI plugin routing and execution
@@ -172,21 +175,21 @@ Options:
 
 ### Input
 
-- Use [scan-request.schema.json](/Users/harshitaaa/Projects/DevSecKit/sdk/schemas/scan-request.schema.json)
+- Use [scan-request.schema.json](sdk/schemas/scan-request.schema.json)
 
 ### Output
 
-- Emit findings following [finding.schema.json](/Users/harshitaaa/Projects/DevSecKit/sdk/schemas/finding.schema.json)
+- Emit findings following [finding.schema.json](sdk/schemas/finding.schema.json)
 
 ### Risk Object
 
-- Unified risk follows [unified-risk.schema.json](/Users/harshitaaa/Projects/DevSecKit/sdk/schemas/unified-risk.schema.json)
+- Unified risk follows [unified-risk.schema.json](sdk/schemas/unified-risk.schema.json)
 
 ## CI/CD Integration
 
 Sample GitHub Actions workflow:
 
-- [.github/workflows/devsec-platform-ci.yml](/Users/harshitaaa/Projects/DevSecKit/.github/workflows/devsec-platform-ci.yml)
+- [.github/workflows/devsec-platform-ci.yml](.github/workflows/devsec-platform-ci.yml)
 
 It starts the API, executes a sample orchestrated scan, validates response shape, and uploads artifacts.
 
@@ -203,6 +206,18 @@ It starts the API, executes a sample orchestrated scan, validates response shape
 
 ## Demo Notes
 
-- Demo UI remains terminal-style and shows realistic streaming multi-module logs.
-- Demo command is `devseckit` (demo-only simulation).
-- Sample target git options are included directly in the terminal prompt flow.
+The GitHub Pages demo (`demo/`) is a fully static site: plain HTML/CSS/vanilla JS,
+no backend, no API keys, no network calls. It includes:
+
+- An interactive terminal simulating `devseckit` commands (`help`, `--version`,
+  `scan`, `platform --event pr`, `plugins list`, `risk summary`, `report show`)
+  against fixed sample data in `demo/fixtures.js`.
+- A filterable sample findings explorer, a plugin ecosystem grid, the real
+  risk-scoring formula with a worked example, a remediation workflow diagram,
+  and a static API request/response playground.
+- A persistent notice wherever output could be mistaken for a real scan:
+  *"Interactive browser demo — simulated output. Run DevSecKit locally for
+  real repository scanning."*
+
+The demo never scans a real repository, calls a real API, or opens a real
+GitHub PR — every number and log line shown is a fixture.

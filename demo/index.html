@@ -1,505 +1,369 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>DevSecKit Demo</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
-
-    :root {
-      --bg: #070a12;
-      --panel: #0d1222;
-      --border: #202a45;
-      --text: #c8d3e7;
-      --muted: #8893a8;
-      --running: #4ade80;
-      --vuln: #ef4444;
-      --other: #b58cff;
-      --cmd: #f59e0b;
-      --prompt-r: #ef4444;
-      --prompt-y: #f59e0b;
-      --prompt-g: #22c55e;
-    }
-
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      padding: 24px;
-      display: grid;
-      place-items: center;
-      background: radial-gradient(circle at 15% 0%, #131b33, #070a12 50%);
-      color: var(--text);
-      font-family: "Share Tech Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
-
-    .terminal {
-      width: min(1200px, 100%);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      overflow: hidden;
-      background: #020611;
-      box-shadow: 0 24px 55px rgba(0, 0, 0, 0.45);
-    }
-
-    .bar {
-      height: 44px;
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      padding: 0 14px;
-      border-bottom: 1px solid var(--border);
-      background: var(--panel);
-      color: var(--muted);
-    }
-
-    .dot { width: 12px; height: 12px; border-radius: 999px; }
-    .r { background: #fb5f57; }
-    .y { background: #fbbd2d; }
-    .g { background: #28c840; }
-
-    .screen {
-      min-height: 75vh;
-      max-height: 75vh;
-      overflow: auto;
-      padding: 6px 18px 18px 18px;
-      line-height: 1.48;
-      white-space: normal;
-    }
-    #logs { margin: 0; padding: 0; }
-
-    .line { color: var(--text); white-space: pre-wrap; margin: 0 0 2px 0; }
-    .muted { color: var(--muted); }
-    .running { color: var(--running); }
-    .vuln { color: var(--vuln); }
-    .other { color: var(--other); }
-    .cmd { color: var(--cmd); font-weight: 700; }
-
-    .input-line {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 0;
-    }
-
-    .prompt {
-      min-width: 42px;
-      font-weight: 700;
-    }
-    .prompt .p1 { color: var(--prompt-r); }
-    .prompt .p2 { color: var(--prompt-y); }
-    .prompt .p3 { color: var(--prompt-g); }
-
-    .input {
-      border: 0;
-      outline: 0;
-      width: 100%;
-      background: transparent;
-      color: var(--cmd);
-      font: inherit;
-      caret-color: var(--cmd);
-    }
-
-    a { color: #9fb7ff; text-decoration: none; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DevSecKit — DevSecOps Scanner CLI &amp; Security Platform</title>
+<meta name="description" content="DevSecKit is a terminal-first DevSecOps toolkit: a scanner CLI plus an extensible security platform with a plugin SDK, risk engine, AI-assisted insights, and remediation workflow." />
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="terminal">
-    <div class="bar">
-      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-      <span>DevSecKit Demo Terminal</span>
+
+<a class="skip-link" href="#main-content">Skip to content</a>
+
+<!-- 1. Product header -->
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="#top">
+      <img src="favicon.svg" alt="" width="20" height="20" />
+      <span>DevSecKit</span>
+    </a>
+    <nav class="main-nav" aria-label="Primary">
+      <a href="#terminal">Terminal</a>
+      <a href="#findings">Sample Findings</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#plugins">Plugins</a>
+      <a href="#risk-engine">Risk Engine</a>
+      <a href="#remediation">Remediation</a>
+      <a href="#quickstart">Quick Start</a>
+      <a href="#api-playground">API</a>
+      <a href="#docs">Docs</a>
+    </nav>
+    <a class="nav-cta" href="https://github.com/imharshitaa/DevSecKit" target="_blank" rel="noopener">View source</a>
+  </div>
+</header>
+
+<main id="main-content">
+
+<!-- 2. Hero -->
+<section id="top" class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow">Terminal-first DevSecOps toolkit</p>
+      <h1>Scan repositories. Correlate risk. Plan remediation.</h1>
+      <p class="hero-lede">
+        DevSecKit pairs a practical scanner CLI with an extensible security
+        platform: a plugin SDK, an event-aware orchestrator, a documented risk
+        scoring formula, and a remediation workflow with guardrails and RBAC.
+        Stdlib-only Python — no runtime dependencies to install.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#terminal">Try the interactive terminal</a>
+        <a class="btn btn-secondary" href="https://github.com/imharshitaa/DevSecKit" target="_blank" rel="noopener">View source on GitHub</a>
+      </div>
+      <p class="hero-note">This page is a static demo. It does not run real scans — see <a href="#quickstart">Quick Start</a> to run DevSecKit locally.</p>
     </div>
-    <div class="screen" id="screen">
-      <div id="logs"></div>
-      <div class="input-line">
-        <span class="prompt"><span class="p1">&gt;</span><span class="p2">&gt;</span><span class="p3">&gt;</span></span>
-        <input id="cmd" class="input" autocomplete="off" spellcheck="false" placeholder="devseckit" />
+    <div class="hero-panel" aria-hidden="true">
+      <div class="panel-chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="panel-title">devseckit.py — scan summary</span>
+      </div>
+      <pre class="panel-body">$ run devseckit
+Target: sample-target (illustrative fixture)
+Selected scans: sast, sca, secrets, iac
+
+=== Findings Summary ===
+<span class="sev-critical">CRITICAL: 2</span>
+<span class="sev-high">HIGH: 2</span>
+<span class="sev-medium">MEDIUM: 4</span>
+
+Report written: reports/scan_report.json</pre>
+    </div>
+  </div>
+</section>
+
+<!-- 3. Interactive terminal -->
+<section id="terminal" class="section">
+  <div class="wrap">
+    <h2>Interactive command terminal</h2>
+    <p class="section-lede">
+      A browser-only simulation of the DevSecKit command surface. It does not
+      connect to a server or execute real scans.
+    </p>
+    <p class="notice" role="note">
+      Interactive browser demo — simulated output. Run DevSecKit locally for real repository scanning.
+    </p>
+
+    <div class="example-commands" role="group" aria-label="Insert example command">
+      <button type="button" class="chip" data-cmd="help">help</button>
+      <button type="button" class="chip" data-cmd="devseckit --version">devseckit --version</button>
+      <button type="button" class="chip" data-cmd="devseckit scan">devseckit scan</button>
+      <button type="button" class="chip" data-cmd="devseckit platform --event pr">devseckit platform --event pr</button>
+      <button type="button" class="chip" data-cmd="plugins list">plugins list</button>
+      <button type="button" class="chip" data-cmd="risk summary">risk summary</button>
+      <button type="button" class="chip" data-cmd="report show">report show</button>
+      <button type="button" class="chip" data-cmd="clear">clear</button>
+    </div>
+
+    <div class="terminal" id="terminal-window">
+      <div class="panel-chrome">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="panel-title">devseckit — simulated session</span>
+      </div>
+      <div class="terminal-log" id="terminal-log" role="log" aria-live="polite"></div>
+      <form id="terminal-form" class="terminal-input-row">
+        <span class="prompt-caret">$</span>
+        <input
+          id="terminal-input"
+          type="text"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          placeholder="type a command, or press ↑ for history — try: help"
+          aria-label="Terminal command input"
+        />
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- 4. Sample scan results explorer -->
+<section id="findings" class="section section-alt">
+  <div class="wrap">
+    <h2>Sample security findings</h2>
+    <p class="section-lede">
+      Illustrative sample data, not live scan results. Shapes match the real
+      <code>Finding</code> schema produced by DevSecKit's plugins.
+    </p>
+    <p class="notice" role="note">ILLUSTRATIVE SAMPLE DATA — NOT A LIVE SCAN</p>
+
+    <div class="filters" role="group" aria-label="Filter sample findings">
+      <label>
+        Severity
+        <select id="filter-severity">
+          <option value="">All</option>
+          <option value="CRITICAL">Critical</option>
+          <option value="HIGH">High</option>
+          <option value="MEDIUM">Medium</option>
+        </select>
+      </label>
+      <label>
+        Category
+        <select id="filter-category">
+          <option value="">All</option>
+          <option value="sast">SAST</option>
+          <option value="sca">SCA</option>
+          <option value="secrets">Secrets</option>
+          <option value="iac">IaC</option>
+        </select>
+      </label>
+      <label>
+        Status
+        <select id="filter-status">
+          <option value="">All</option>
+          <option value="open">Open</option>
+          <option value="acknowledged">Acknowledged</option>
+          <option value="resolved">Resolved</option>
+        </select>
+      </label>
+    </div>
+
+    <ul class="findings-list" id="findings-list" aria-label="Sample findings"></ul>
+  </div>
+</section>
+
+<!-- 5. Architecture flow diagram -->
+<section id="architecture" class="section">
+  <div class="wrap">
+    <h2>Platform architecture</h2>
+    <p class="section-lede">
+      Every stage below corresponds to a real module in <code>devsec_platform/</code>.
+    </p>
+    <ol class="flow-diagram">
+      <li><strong>Event</strong><span>pr / deploy / runtime</span></li>
+      <li><strong>Orchestrator</strong><span>orchestrator.py — RBAC check, plugin selection</span></li>
+      <li><strong>Plugin Registry</strong><span>plugins/registry.py</span></li>
+      <li><strong>Scanner Adapters</strong><span>plugins/builtin.py — semgrep, trivy, gitleaks, trufflehog, checkov, zap, iast-lite</span></li>
+      <li><strong>Normalized Findings</strong><span>schemas.py — Finding dataclass</span></li>
+      <li><strong>Risk Engine</strong><span>risk_engine.py — correlate_findings()</span></li>
+      <li><strong>AI Insights</strong><span>ai_module.py — analyze_risks()</span></li>
+      <li><strong>Remediation Planning</strong><span>remediation.py — AutoRemediationEngine, guardrails.py validation</span></li>
+      <li><strong>Audit Trail</strong><span>audit.py — reports/audit/devsec_platform_audit_YYYYMMDD.log</span></li>
+    </ol>
+  </div>
+</section>
+
+<!-- 6. Plugin ecosystem -->
+<section id="plugins" class="section section-alt">
+  <div class="wrap">
+    <h2>Plugin ecosystem</h2>
+    <p class="section-lede">Eight plugin types are defined in the SDK contract. Two are honestly stubbed pending external integrations.</p>
+    <div class="plugin-grid" id="plugin-grid"></div>
+  </div>
+</section>
+
+<!-- 7. Risk engine explanation -->
+<section id="risk-engine" class="section">
+  <div class="wrap">
+    <h2>Risk scoring</h2>
+    <p class="section-lede">Deterministic, documented formula from <code>risk_engine.py</code> — no opaque ML scoring.</p>
+    <div class="risk-formula">
+      <pre>exploitability = min(10, max_severity_weight × 0.9 + 1.2 if known_exploits)
+exposure       = min(10, 4.0 + distinct_plugin_types × 2.0 + 1.2 if internet_exposed)
+business_impact= min(10, max_severity_weight × 0.7 + 1.2 × finding_count + 1.0 if sensitive_data)
+
+composite = exploitability × 0.4 + exposure × 0.25 + business_impact × 0.35
+
+severity:  composite ≥ 8.5 → CRITICAL · ≥ 7.0 → HIGH · ≥ 4.5 → MEDIUM · else LOW</pre>
+    </div>
+    <h3>Worked example</h3>
+    <div class="risk-example" id="risk-example"></div>
+  </div>
+</section>
+
+<!-- 8. Remediation workflow -->
+<section id="remediation" class="section section-alt">
+  <div class="wrap">
+    <h2>Remediation workflow</h2>
+    <p class="section-lede">From correlated risk to pull request — each stage below is labeled by what actually runs today.</p>
+    <ol class="workflow-diagram">
+      <li class="stage-implemented">
+        <strong>1. Risk correlated</strong>
+        <span class="stage-tag">implemented</span>
+        <p>Findings sharing a <code>rule_id</code> are grouped into one <code>UnifiedRisk</code>.</p>
+      </li>
+      <li class="stage-implemented">
+        <strong>2. Fix guidance generated</strong>
+        <span class="stage-tag">implemented</span>
+        <p>Deterministic heuristics in <code>ai_module.py</code> — labeled as suggestions, never as confirmed facts.</p>
+      </li>
+      <li class="stage-implemented">
+        <strong>3. Remediation plan drafted</strong>
+        <span class="stage-tag">implemented</span>
+        <p>Target files, patch summary, and validation steps assembled in <code>remediation.py</code>.</p>
+      </li>
+      <li class="stage-implemented">
+        <strong>4. Guardrail validation</strong>
+        <span class="stage-tag">implemented</span>
+        <p>Blocked paths (<code>.github/workflows</code>, <code>.env</code>, secrets, etc.), file-type allowlist, and repo-root containment checks in <code>guardrails.py</code>.</p>
+      </li>
+      <li class="stage-implemented">
+        <strong>5. Dry-run preview</strong>
+        <span class="stage-tag">implemented</span>
+        <p><code>POST /api/v1/remediations/preview</code> returns a preview PR URL/branch without creating anything.</p>
+      </li>
+      <li class="stage-config">
+        <strong>6. Real PR creation</strong>
+        <span class="stage-tag">requires configuration</span>
+        <p>Only runs with <code>GITHUB_TOKEN</code> set, <code>remediate:apply</code> RBAC permission, and <code>safe_to_auto_apply</code> (MEDIUM severity only); otherwise it reports back without creating a PR.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- 9. Developer quick start -->
+<section id="quickstart" class="section">
+  <div class="wrap">
+    <h2>Quick start</h2>
+    <p class="section-lede">Exact commands from the repository README.</p>
+
+    <div class="code-block" data-copy>
+      <div class="code-block-head"><span>Clone the repository</span><button class="copy-btn" type="button">Copy</button></div>
+      <pre>git clone https://github.com/imharshitaa/DevSecKit.git
+cd DevSecKit
+chmod +x run devseckit</pre>
+    </div>
+
+    <div class="code-block" data-copy>
+      <div class="code-block-head"><span>Add to PATH (zsh / bash)</span><button class="copy-btn" type="button">Copy</button></div>
+      <pre>export PATH="$PWD:$PATH"</pre>
+    </div>
+
+    <div class="code-block" data-copy>
+      <div class="code-block-head"><span>Add to PATH (fish)</span><button class="copy-btn" type="button">Copy</button></div>
+      <pre>set -gx PATH (pwd) $PATH</pre>
+    </div>
+
+    <div class="code-block" data-copy>
+      <div class="code-block-head"><span>Run the scanner CLI</span><button class="copy-btn" type="button">Copy</button></div>
+      <pre>run devseckit</pre>
+    </div>
+
+    <div class="code-block" data-copy>
+      <div class="code-block-head"><span>Launch the platform API</span><button class="copy-btn" type="button">Copy</button></div>
+      <pre>export DEVSEC_API_TOKEN='change-me'
+python3 -m devsec_platform.api</pre>
+    </div>
+
+    <p class="hint">
+      <code>DEVSEC_API_TOKEN</code> is required for every <code>/api/*</code> request
+      (sent as <code>Authorization: Bearer &lt;token&gt;</code> or <code>X-API-Key</code>).
+      No credentials are included here — set your own value before starting the server.
+    </p>
+  </div>
+</section>
+
+<!-- 10. API playground -->
+<section id="api-playground" class="section section-alt">
+  <div class="wrap">
+    <h2>API playground</h2>
+    <p class="section-lede">
+      Editable sample requests and their expected response shape. These never fire
+      against a live server — copy a request and run it yourself with <code>curl</code>.
+    </p>
+
+    <div class="api-tabs" role="tablist" aria-label="API examples">
+      <button class="api-tab is-active" type="button" data-sample="listPlugins" role="tab" aria-selected="true">GET /api/v1/plugins</button>
+      <button class="api-tab" type="button" data-sample="createScan" role="tab" aria-selected="false">POST /api/v1/scans</button>
+      <button class="api-tab" type="button" data-sample="remediationPreview" role="tab" aria-selected="false">POST /api/v1/remediations/preview</button>
+    </div>
+
+    <div class="api-playground-grid">
+      <div class="code-block" data-copy>
+        <div class="code-block-head"><span>curl</span><button class="copy-btn" type="button">Copy</button></div>
+        <pre id="api-curl"></pre>
+      </div>
+      <div class="api-editor-col">
+        <label for="api-request-body">Request body (editable)</label>
+        <textarea id="api-request-body" spellcheck="false"></textarea>
+      </div>
+      <div class="code-block" data-copy>
+        <div class="code-block-head"><span>Example response</span><button class="copy-btn" type="button">Copy</button></div>
+        <pre id="api-response"></pre>
       </div>
     </div>
   </div>
+</section>
 
-  <script>
-    const logs = document.getElementById('logs');
-    const screen = document.getElementById('screen');
-    const cmd = document.getElementById('cmd');
-    let running = false;
-    let animateLogs = false;
-    let logQueue = Promise.resolve();
-    let awaitingGitChoice = false;
-    let selectedRepo = '';
-    const repoOptions = {
-      '1': 'https://github.com/juice-shop/juice-shop',
-      '2': 'https://github.com/WebGoat/WebGoat',
-      '3': 'https://github.com/digininja/DVWA',
-      '4': 'https://github.com/OWASP/NodeGoat',
-    };
-    const repoProfiles = {
-      '1': {
-        name: 'juice-shop',
-        targetDir: './juice-shop',
-        files: '412',
-        loc: '86,210',
-        deps: '192',
-        summary: { critical: 2, high: 7, medium: 6, low: 1, duration: '03:11' },
-        top: ['Hardcoded JWT secret', 'NoSQL injection in login API', 'Prototype pollution package', 'Missing CSP header'],
-        sast: [
-          { type: 'NoSQL Injection', file: 'server/routes/login.ts', line: '101', code: "User.findOne({ email: req.body.email, password: req.body.password })", sev: 'HIGH', cwe: 'CWE-943' },
-          { type: 'Cross-Site Scripting', file: 'frontend/src/app/search.component.ts', line: '56', code: 'innerHTML = userQuery', sev: 'MEDIUM', cwe: 'CWE-79' },
-        ],
-        sca: [
-          { pkg: 'lodash', ver: '4.17.15', vuln: 'Prototype Pollution', sev: 'HIGH', cve: 'CVE-2020-8203' },
-          { pkg: 'jsonwebtoken', ver: '8.5.1', vuln: 'Insecure token validation', sev: 'MEDIUM', cve: 'CVE-2022-23540' },
-        ],
-        secrets: [
-          { type: 'JWT Secret', file: 'config/default.yml', line: '34', value: 'jwt.secret: "dev-secret-key"', sev: 'CRITICAL' },
-          { type: 'SMTP Password', file: 'docker/.env', line: '12', value: 'SMTP_PASSWORD=welcome123', sev: 'HIGH' },
-        ],
-        iac: [
-          { file: 'docker-compose.yml', issue: 'Database exposed publicly', resource: 'ports: "0.0.0.0:27017:27017"', sev: 'HIGH' },
-          { file: 'Dockerfile', issue: 'Running container as root', resource: '', sev: 'MEDIUM' },
-        ],
-        dast: [
-          { test: 'NoSQL injection test', endpoint: '/rest/user/login', payload: '{"email":{"$ne":null},"password":{"$ne":null}}', result: 'Authentication bypass detected', sev: 'HIGH' },
-          { test: 'XSS payload test', endpoint: '/#/search?q=', payload: '<script>alert(1)<\\/script>', result: 'Payload reflected in search view', sev: 'MEDIUM' },
-        ],
-        iast: [
-          { type: 'Injection sink reached', location: '/rest/user/login', trace: 'request body -> query object -> Mongo driver', sev: 'HIGH' },
-        ],
-      },
-      '2': {
-        name: 'WebGoat',
-        targetDir: './WebGoat',
-        files: '539',
-        loc: '112,904',
-        deps: '211',
-        summary: { critical: 1, high: 6, medium: 8, low: 2, duration: '04:08' },
-        top: ['Hardcoded DB password', 'SQL Injection in lesson endpoint', 'Unsafe deserialization', 'Public admin actuator path'],
-        sast: [
-          { type: 'SQL Injection', file: 'src/main/java/org/owasp/webgoat/lessons/sql/SqlLesson.java', line: '93', code: 'statement.executeQuery(query + userInput)', sev: 'HIGH', cwe: 'CWE-89' },
-          { type: 'Unsafe Deserialization', file: 'src/main/java/org/owasp/webgoat/lessons/deserialization/PayloadController.java', line: '44', code: 'new ObjectInputStream(request.getInputStream())', sev: 'HIGH', cwe: 'CWE-502' },
-        ],
-        sca: [
-          { pkg: 'spring-security-web', ver: '5.7.4', vuln: 'Authorization bypass', sev: 'HIGH', cve: 'CVE-2023-34035' },
-          { pkg: 'snakeyaml', ver: '1.30', vuln: 'Arbitrary code execution risk', sev: 'MEDIUM', cve: 'CVE-2022-1471' },
-        ],
-        secrets: [
-          { type: 'Database Password', file: 'src/main/resources/application.properties', line: '21', value: 'spring.datasource.password=webgoat', sev: 'HIGH' },
-          { type: 'Signing Key', file: 'src/main/resources/jwt.properties', line: '4', value: 'jwt.signing.key=changeit', sev: 'CRITICAL' },
-        ],
-        iac: [
-          { file: 'docker-compose.yml', issue: 'Container privileged mode enabled', resource: 'privileged: true', sev: 'HIGH' },
-          { file: 'Dockerfile', issue: 'No HEALTHCHECK defined', resource: '', sev: 'MEDIUM' },
-        ],
-        dast: [
-          { test: 'SQL injection test', endpoint: '/WebGoat/SqlInjection/attack', payload: "' OR '1'='1", result: 'Query manipulation confirmed', sev: 'HIGH' },
-          { test: 'Directory traversal test', endpoint: '/WebGoat/FileUpload/download', payload: '../../etc/passwd', result: 'Path traversal response observed', sev: 'MEDIUM' },
-        ],
-        iast: [
-          { type: 'Unsafe SQL construction', location: '/SqlInjection/attack', trace: 'HTTP param -> string concat -> JDBC execute', sev: 'HIGH' },
-        ],
-      },
-      '3': {
-        name: 'DVWA',
-        targetDir: './DVWA',
-        files: '87',
-        loc: '14,090',
-        deps: '43',
-        summary: { critical: 1, high: 4, medium: 4, low: 1, duration: '02:02' },
-        top: ['Default admin password', 'SQL Injection in vulnerable page', 'Reflected XSS path', 'Insecure PHP config'],
-        sast: [
-          { type: 'SQL Injection', file: 'vulnerabilities/sqli/source/low.php', line: '12', code: '$query = "SELECT * FROM users WHERE user_id = $id";', sev: 'HIGH', cwe: 'CWE-89' },
-          { type: 'Reflected XSS', file: 'vulnerabilities/xss_r/source/low.php', line: '8', code: "echo '<pre>Hello ' . $_GET['name'] . '</pre>'; ", sev: 'MEDIUM', cwe: 'CWE-79' },
-        ],
-        sca: [
-          { pkg: 'php', ver: '7.4.x', vuln: 'Multiple security issues', sev: 'HIGH', cve: 'CVE-2024-4577' },
-          { pkg: 'mysql-client', ver: '8.0.28', vuln: 'Privilege escalation', sev: 'MEDIUM', cve: 'CVE-2023-21980' },
-        ],
-        secrets: [
-          { type: 'Default Credential', file: 'config/config.inc.php', line: '23', value: "$DVWA['default_security_level'] = 'low';", sev: 'HIGH' },
-          { type: 'Database Password', file: 'config/config.inc.php', line: '13', value: "$DVWA['db_password'] = 'p@ssw0rd';", sev: 'CRITICAL' },
-        ],
-        iac: [
-          { file: 'docker-compose.yml', issue: 'MySQL root password in plaintext', resource: 'MYSQL_ROOT_PASSWORD=password', sev: 'HIGH' },
-          { file: 'Dockerfile', issue: 'Container user not specified', resource: '', sev: 'MEDIUM' },
-        ],
-        dast: [
-          { test: 'SQL injection test', endpoint: '/vulnerabilities/sqli/', payload: '1 OR 1=1', result: 'Dumped user table records', sev: 'HIGH' },
-          { test: 'XSS payload test', endpoint: '/vulnerabilities/xss_r/', payload: '<script>alert(1)<\\/script>', result: 'Payload reflected in HTML', sev: 'MEDIUM' },
-        ],
-        iast: [
-          { type: 'Unsanitized parameter flow', location: '/vulnerabilities/sqli/', trace: 'GET id -> SQL query string -> MySQL', sev: 'HIGH' },
-        ],
-      },
-      '4': {
-        name: 'NodeGoat',
-        targetDir: './NodeGoat',
-        files: '128',
-        loc: '21,443',
-        deps: '54',
-        summary: { critical: 1, high: 5, medium: 3, low: 0, duration: '02:14' },
-        top: ['Hardcoded AWS Access Key', 'SQL Injection vulnerability', 'Prototype pollution dependency', 'Public S3 bucket configuration'],
-        sast: [
-          { type: 'SQL Injection', file: 'app/routes/user.js', line: '87', code: 'db.query("SELECT * FROM users WHERE id=" + userInput)', sev: 'HIGH', cwe: 'CWE-89' },
-          { type: 'Cross-Site Scripting', file: 'views/profile.ejs', line: '42', code: '<%= userInput %>', sev: 'MEDIUM', cwe: 'CWE-79' },
-        ],
-        sca: [
-          { pkg: 'lodash', ver: '4.17.10', vuln: 'Prototype Pollution', sev: 'HIGH', cve: 'CVE-2019-10744' },
-          { pkg: 'express', ver: '4.15.0', vuln: 'Denial of Service', sev: 'MEDIUM', cve: 'CVE-2019-5413' },
-        ],
-        secrets: [
-          { type: 'AWS Access Key', file: 'config/config.js', line: '12', value: 'AKIAIOSFODNN7EXAMPLE', sev: 'CRITICAL' },
-          { type: 'Database Password', file: 'config/db.js', line: '7', value: 'password = "admin123"', sev: 'HIGH' },
-        ],
-        iac: [
-          { file: 'terraform/main.tf', issue: 'Public S3 bucket enabled', resource: 'aws_s3_bucket.logs | acl = "public-read"', sev: 'HIGH' },
-          { file: 'Dockerfile', issue: 'Running container as root', resource: '', sev: 'MEDIUM' },
-        ],
-        dast: [
-          { test: 'SQL injection test', endpoint: '/login', payload: "' OR '1'='1", result: 'Authentication bypass detected', sev: 'HIGH' },
-          { test: 'XSS payload test', endpoint: '/search', payload: '<script>alert(1)<\\/script>', result: 'Payload reflected', sev: 'MEDIUM' },
-        ],
-        iast: [
-          { type: 'SQL Injection', location: '/login endpoint', trace: 'User input -> query builder -> database', sev: 'HIGH' },
-        ],
-      },
-    };
+<!-- 11. Documentation / source links -->
+<section id="docs" class="section">
+  <div class="wrap">
+    <h2>Documentation &amp; source</h2>
+    <div class="docs-grid">
+      <a class="doc-card" href="https://github.com/imharshitaa/DevSecKit/blob/main/README.md" target="_blank" rel="noopener">
+        <strong>README</strong><span>Project overview and quick start</span>
+      </a>
+      <a class="doc-card" href="https://github.com/imharshitaa/DevSecKit/blob/main/docs/ARCHITECTURE.md" target="_blank" rel="noopener">
+        <strong>Architecture</strong><span>Plugin SDK, orchestrator, risk engine, guardrails</span>
+      </a>
+      <a class="doc-card" href="https://github.com/imharshitaa/DevSecKit/blob/main/docs/API.md" target="_blank" rel="noopener">
+        <strong>API reference</strong><span>REST endpoints and auth model</span>
+      </a>
+      <a class="doc-card" href="https://github.com/imharshitaa/DevSecKit/tree/main/sdk/schemas" target="_blank" rel="noopener">
+        <strong>SDK schemas</strong><span>scan-request, finding, unified-risk JSON schemas</span>
+      </a>
+      <a class="doc-card" href="https://github.com/imharshitaa/DevSecKit/tree/main/examples/node-plugin" target="_blank" rel="noopener">
+        <strong>Example plugin</strong><span>Node.js third-party plugin reference</span>
+      </a>
+      <a class="doc-card" href="https://github.com/imharshitaa/DevSecKit/blob/main/.github/workflows/devsec-platform-ci.yml" target="_blank" rel="noopener">
+        <strong>CI workflow</strong><span>Platform API smoke test in GitHub Actions</span>
+      </a>
+    </div>
+  </div>
+</section>
 
-    function line(text, cls='line') {
-      const append = () => {
-        const el = document.createElement('div');
-        el.className = `line ${cls}`;
-        el.textContent = text;
-        logs.appendChild(el);
-        screen.scrollTop = screen.scrollHeight;
-      };
-      if (!animateLogs) {
-        append();
-        return logQueue;
-      }
-      const delay = 18 + Math.floor(Math.random() * 42);
-      logQueue = logQueue.then(() => new Promise((resolve) => {
-        setTimeout(() => {
-          append();
-          resolve();
-        }, delay);
-      }));
-      return logQueue;
-    }
+</main>
 
-    function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
+<!-- 12. Footer -->
+<footer class="site-footer">
+  <div class="wrap footer-row">
+    <span>DevSecKit — terminal-first DevSecOps toolkit.</span>
+    <a href="https://github.com/imharshitaa/DevSecKit" target="_blank" rel="noopener">github.com/imharshitaa/DevSecKit</a>
+  </div>
+</footer>
 
-    function prelude() {
-      logs.innerHTML = '';
-      line('DevSecKit - Terminal DevSecOps Scanner', 'other');
-      line('Demo URL: https://imharshitaa.github.io/DevSecKit/demo/', 'muted');
-      line('Project: https://github.com/imharshitaa/DevSecKit', 'muted');
-      line('Run command: run devseckit', 'muted');
-      line('Platform API: python3 -m devsec_platform.api', 'muted');
-      line('Sample Inputs (Git URLs):', 'muted');
-      line('  - https://github.com/juice-shop/juice-shop', 'muted');
-      line('  - https://github.com/WebGoat/WebGoat', 'muted');
-      line('  - https://github.com/digininja/DVWA', 'muted');
-      line('  - https://github.com/OWASP/NodeGoat', 'muted');
-      line('Type devseckit and press Enter to run demo logs.', 'muted');
-    }
-
-    async function runDevsec() {
-      line('>>> devseckit', 'cmd');
-      line('>>> choose which git to scan: [1] https://github.com/juice-shop/juice-shop [2] https://github.com/WebGoat/WebGoat [3] https://github.com/digininja/DVWA [4] https://github.com/OWASP/NodeGoat', 'cmd');
-      awaitingGitChoice = true;
-    }
-
-    function section(title) {
-      line('--------------------------------------------------------------------------------', 'other');
-      line(title, 'other');
-      line('--------------------------------------------------------------------------------', 'other');
-    }
-
-    function blank() { line(''); }
-
-    async function runDevsecWithChoice(choice) {
-      animateLogs = true;
-      logQueue = Promise.resolve();
-      selectedRepo = repoOptions[choice];
-      const p = repoProfiles[choice];
-      line(`>>> ${choice}`, 'cmd');
-      line(`Selected: ${selectedRepo}`, 'other');
-      blank();
-
-      line('================================================================================', 'other');
-      line('DEVSECOPS SECURITY PIPELINE', 'other');
-      line(`Target Directory: ${p.targetDir}`, 'other');
-      line('Scan Start Time: 2026-03-08 21:44:01', 'other');
-      line('Modules: SAST | SCA | Secrets | IaC | DAST | IAST', 'other');
-      line('================================================================================', 'other');
-      blank();
-
-      line('[INIT] Loading security engines...', 'running');
-      line('[INIT] Rules loaded: 2,143', 'running');
-      line('[INIT] Dependency database updated', 'running');
-      line('[INIT] Secret detection patterns loaded', 'running');
-      line('[INIT] Infrastructure scanning enabled', 'running');
-      blank();
-
-      section('[SAST] STATIC APPLICATION SECURITY TESTING');
-      line('[SAST] Analyzing JavaScript source files...', 'running');
-      blank();
-      line(`[INFO] Files analyzed: ${p.files}`, 'other');
-      line(`[INFO] Lines of code: ${p.loc}`, 'other');
-      blank();
-      for (const f of p.sast) {
-        line('[VULNERABILITY DETECTED]', 'vuln');
-        line(`Type: ${f.type}`, 'vuln');
-        line(`File: ${f.file}`, 'vuln');
-        line(`Line: ${f.line}`, 'vuln');
-        line('Code:', 'vuln');
-        line(f.code, 'vuln');
-        line(`Severity: ${f.sev}`, 'vuln');
-        line(`CWE: ${f.cwe}`, 'vuln');
-        blank();
-      }
-      line('[SAST] Completed', 'running');
-      line(`Findings: ${p.sast.length}`, 'running');
-      blank();
-
-      section('[SCA] SOFTWARE COMPOSITION ANALYSIS');
-      line('[SCA] Analyzing dependencies...', 'running');
-      blank();
-      line(`[INFO] Dependencies detected: ${p.deps}`, 'other');
-      blank();
-      for (const d of p.sca) {
-        line('[VULNERABLE PACKAGE]', 'vuln');
-        line(`Package: ${d.pkg}`, 'vuln');
-        line(`Version: ${d.ver}`, 'vuln');
-        line(`Vulnerability: ${d.vuln}`, 'vuln');
-        line(`Severity: ${d.sev}`, 'vuln');
-        line(`CVE: ${d.cve}`, 'vuln');
-        blank();
-      }
-      line('[SCA] Completed', 'running');
-      line(`Vulnerable dependencies: ${p.sca.length}`, 'running');
-      blank();
-
-      section('[SECRETS] SECRET DETECTION');
-      line('[SCAN] Searching for exposed credentials...', 'running');
-      blank();
-      for (const s of p.secrets) {
-        line('[SECRET DETECTED]', 'vuln');
-        line(`Type: ${s.type}`, 'vuln');
-        line(`File: ${s.file}`, 'vuln');
-        line(`Line: ${s.line}`, 'vuln');
-        line(`Value: ${s.value}`, 'vuln');
-        line(`Severity: ${s.sev}`, 'vuln');
-        blank();
-      }
-      line('[SECRETS] Completed', 'running');
-      line(`Secrets detected: ${p.secrets.length}`, 'running');
-      blank();
-
-      section('[IAC] INFRASTRUCTURE AS CODE SCAN');
-      line('[IAC] Scanning Terraform and Docker configurations...', 'running');
-      blank();
-      for (const i of p.iac) {
-        line('[VULNERABILITY DETECTED]', 'vuln');
-        line(`File: ${i.file}`, 'vuln');
-        line(`Issue: ${i.issue}`, 'vuln');
-        if (i.resource) line(`Resource: ${i.resource}`, 'vuln');
-        line(`Severity: ${i.sev}`, 'vuln');
-        blank();
-      }
-      line('[IAC] Completed', 'running');
-      line(`Issues found: ${p.iac.length}`, 'running');
-      blank();
-
-      section('[DAST] DYNAMIC APPLICATION SECURITY TESTING');
-      line('[DAST] Starting web scanner', 'running');
-      line('Target: http://localhost:3000', 'other');
-      blank();
-      for (const d of p.dast) {
-        line(`[TEST] ${d.test}`, 'running');
-        line(`Endpoint: ${d.endpoint}`, 'other');
-        line(`Payload: ${d.payload}`, 'other');
-        line(`Result: ${d.result}`, 'vuln');
-        line(`Severity: ${d.sev}`, 'vuln');
-        blank();
-      }
-      line('[DAST] Completed', 'running');
-      line(`Vulnerabilities detected: ${p.dast.length}`, 'running');
-      blank();
-
-      section('[IAST] INTERACTIVE APPLICATION SECURITY TESTING');
-      line('[IAST] Instrumenting application runtime...', 'running');
-      line('[IAST] Monitoring database queries...', 'running');
-      blank();
-      for (const i of p.iast) {
-        line('[VULNERABILITY DETECTED]', 'vuln');
-        line(`Type: ${i.type}`, 'vuln');
-        line(`Location: ${i.location}`, 'vuln');
-        line('Runtime Trace:', 'vuln');
-        line(i.trace, 'vuln');
-        line(`Severity: ${i.sev}`, 'vuln');
-        blank();
-      }
-      line('[IAST] Completed', 'running');
-      line(`Issues detected: ${p.iast.length}`, 'running');
-      blank();
-
-      section('SCAN SUMMARY');
-      line(`Target: ${p.name}`, 'other');
-      line(`Total Files Scanned: ${p.files}`, 'other');
-      line(`Dependencies Analyzed: ${p.deps}`, 'other');
-      blank();
-      line('Findings:', 'other');
-      blank();
-      line(`CRITICAL: ${p.summary.critical}`, 'vuln');
-      line(`HIGH: ${p.summary.high}`, 'vuln');
-      line(`MEDIUM: ${p.summary.medium}`, 'vuln');
-      line(`LOW: ${p.summary.low}`, 'vuln');
-      blank();
-      line('Top Issues:', 'other');
-      for (const t of p.top) line(` - ${t}`, 'other');
-      blank();
-      line(`Scan Duration: ${p.summary.duration}`, 'other');
-      line('Pipeline Status: FAILED (security issues detected)', 'vuln');
-      blank();
-      line('================================================================================', 'other');
-      line('END OF SECURITY REPORT', 'other');
-      line('================================================================================', 'other');
-      blank();
-      await logQueue;
-      animateLogs = false;
-    }
-
-    cmd.addEventListener('keydown', async (e) => {
-      if (e.key !== 'Enter' || running) return;
-      const value = cmd.value.trim();
-      cmd.value = '';
-      if (!value) return;
-      if (awaitingGitChoice) {
-        if (!repoOptions[value]) {
-          line(`>>> ${value}`, 'cmd');
-          line('Invalid option. Choose 1, 2, 3, or 4.', 'other');
-          return;
-        }
-        running = true;
-        awaitingGitChoice = false;
-        await runDevsecWithChoice(value);
-        running = false;
-        return;
-      }
-      if (value !== 'devseckit' && value !== 'devsec') {
-        line(`>>> ${value}`, 'cmd');
-        line('Unknown command. Use: devseckit', 'other');
-        line('');
-        return;
-      }
-      running = true;
-      await runDevsec();
-      running = false;
-    });
-
-    prelude();
-  </script>
+<script src="fixtures.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

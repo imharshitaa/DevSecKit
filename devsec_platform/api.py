@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from urllib.parse import urlparse
 
+from devsec_platform.guardrails import RBACEngine
 from devsec_platform.orchestrator import Orchestrator
 from devsec_platform.schemas import ScanRequest, ScanTarget, validate_scan_request_data
+
+MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024  # 2 MiB
+
+
+class RequestTooLarge(Exception):
+    pass
 
 
 def is_authorized(headers: dict, expected_token: str) -> bool:
@@ -34,8 +41,13 @@ class DevSecAPIHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0") or 0)
         if not length:
             return {}
+        if length > MAX_REQUEST_BODY_BYTES:
+            raise RequestTooLarge(f"request body exceeds {MAX_REQUEST_BODY_BYTES} bytes")
         raw = self.rfile.read(length)
         return json.loads(raw.decode("utf-8"))
+
+    def _allow_local_paths(self) -> bool:
+        return os.environ.get("DEVSEC_API_ALLOW_LOCAL_PATHS", "").strip() == "1"
 
     def _is_authorized(self) -> bool:
         token = os.environ.get("DEVSEC_API_TOKEN", "").strip()
@@ -70,6 +82,10 @@ class DevSecAPIHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/v1/scans":
             try:
                 payload = self._read_json()
+            except RequestTooLarge as exc:
+                self._json(413, {"error": str(exc)})
+                return
+            try:
                 validate_scan_request_data(payload)
                 allowed_roles = self._allowed_roles()
                 req_roles = payload.get("roles", [])
@@ -93,14 +109,25 @@ class DevSecAPIHandler(BaseHTTPRequestHandler):
                     actor=payload.get("actor"),
                     roles=payload.get("roles"),
                 )
-                response = self.orchestrator.run(request)
+                response = self.orchestrator.run(request, allow_local_path=self._allow_local_paths())
                 self._json(200, asdict(response))
+            except PermissionError as exc:
+                self._json(403, {"error": str(exc)})
             except Exception as exc:
                 self._json(400, {"error": str(exc)})
             return
 
         if parsed.path == "/api/v1/remediations/preview":
-            payload = self._read_json()
+            try:
+                payload = self._read_json()
+            except RequestTooLarge as exc:
+                self._json(413, {"error": str(exc)})
+                return
+            roles = payload.get("roles", [])
+            auth = RBACEngine.authorize(roles, "remediate:propose")
+            if not auth.allowed:
+                self._json(403, {"error": auth.reason})
+                return
             repo = payload.get("repo", "owner/repo")
             plan = payload.get("plan", {})
             result = {
@@ -116,7 +143,7 @@ class DevSecAPIHandler(BaseHTTPRequestHandler):
 
 
 def run_api_server(host: str = "127.0.0.1", port: int = 8787) -> None:
-    server = HTTPServer((host, port), DevSecAPIHandler)
+    server = ThreadingHTTPServer((host, port), DevSecAPIHandler)
     print(f"DevSec platform API listening on http://{host}:{port}")
     server.serve_forever()
 

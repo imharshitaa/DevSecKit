@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 from pathlib import Path
 import shutil
 import subprocess
@@ -22,6 +21,7 @@ from devsec_platform.schemas import (
     ScanRequest,
     ScanResponse,
     to_dict,
+    utcnow_iso,
 )
 
 
@@ -30,10 +30,15 @@ class Orchestrator:
         self.registry = PluginRegistry()
         self.audit = AuditLogger()
 
-    def _resolve_target_path(self, request: ScanRequest) -> tuple[str, str | None]:
+    def _resolve_target_path(self, request: ScanRequest, allow_local_path: bool = True) -> tuple[str, str | None]:
         repo = request.target.repo_url
         maybe_local = Path(repo)
         if maybe_local.exists() and maybe_local.is_dir():
+            if not allow_local_path:
+                raise ValueError(
+                    "target.repo_url must be a git URL (http:// or https://) for this caller; "
+                    "local filesystem paths are not permitted"
+                )
             return str(maybe_local.resolve()), None
 
         if repo.startswith("http://") or repo.startswith("https://"):
@@ -70,9 +75,9 @@ class Orchestrator:
 
     def _execute_plugin(self, plugin_name: str, request: ScanRequest) -> tuple[PluginExecution, list]:
         plugin = self.registry.get(plugin_name)
-        started = datetime.utcnow().isoformat() + "Z"
+        started = utcnow_iso()
         if not plugin:
-            ended = datetime.utcnow().isoformat() + "Z"
+            ended = utcnow_iso()
             execution = PluginExecution(
                 plugin=plugin_name,
                 tool="unknown",
@@ -86,7 +91,7 @@ class Orchestrator:
 
         try:
             plugin_findings = plugin.run(request)
-            ended = datetime.utcnow().isoformat() + "Z"
+            ended = utcnow_iso()
             execution = PluginExecution(
                 plugin=plugin_name,
                 tool=plugin.tool_name,
@@ -97,7 +102,7 @@ class Orchestrator:
             )
             return execution, plugin_findings
         except Exception as exc:
-            ended = datetime.utcnow().isoformat() + "Z"
+            ended = utcnow_iso()
             execution = PluginExecution(
                 plugin=plugin_name,
                 tool=plugin.tool_name,
@@ -109,7 +114,7 @@ class Orchestrator:
             )
             return execution, []
 
-    def run(self, request: ScanRequest) -> ScanResponse:
+    def run(self, request: ScanRequest, allow_local_path: bool = True) -> ScanResponse:
         auth = RBACEngine.authorize(request.roles, "scan:run")
         if not auth.allowed:
             self.audit.write(AuditEvent(actor=request.actor, action="scan.run", resource=request.target.repo_url, status="DENY", message=auth.reason))
@@ -118,7 +123,7 @@ class Orchestrator:
         selected_plugins = self.select_plugins(request)
         executions: list[PluginExecution] = []
         findings = []
-        target_path, cleanup_dir = self._resolve_target_path(request)
+        target_path, cleanup_dir = self._resolve_target_path(request, allow_local_path=allow_local_path)
         request_copy = copy.deepcopy(request)
         request_copy.context["_resolved_target_path"] = target_path
         request_copy.context["_repo_root"] = target_path
@@ -160,7 +165,7 @@ class Orchestrator:
             unified_risks=[to_dict(r) for r in risks],
             ai_insights=[to_dict(i) for i in insights],
             remediation_plans=[to_dict(p) for p in validated_plans],
-            generated_at=datetime.utcnow().isoformat() + "Z",
+            generated_at=utcnow_iso(),
         )
 
         self.audit.write(

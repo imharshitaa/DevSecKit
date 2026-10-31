@@ -1,6 +1,6 @@
 # DevSecKit Platform REST API
 
-API server file: [devsec_platform/api.py](/Users/harshitaaa/Projects/DevSecKit/devsec_platform/api.py)
+API server file: [devsec_platform/api.py](../devsec_platform/api.py)
 
 Start API:
 
@@ -39,8 +39,13 @@ Runs orchestrated scan flow and returns:
 Required request fields:
 
 - `actor` (non-empty string)
-- `roles` (non-empty list)
+- `roles` (non-empty list; must include a role granted `scan:run`)
 - `target.repo_url`
+
+By default the API only accepts `http://`/`https://` repository URLs — local
+filesystem paths are rejected to prevent a remote caller from pointing a scan
+at the server's own filesystem. Set `DEVSEC_API_ALLOW_LOCAL_PATHS=1` to lift
+this restriction for local testing only.
 
 Example request:
 
@@ -70,10 +75,16 @@ curl -sS -X POST http://127.0.0.1:8787/api/v1/scans \
 
 ### `POST /api/v1/remediations/preview`
 
-Returns GitHub PR preview data for remediation plan.
+Returns GitHub PR preview data for a remediation plan. Does not create anything.
+
+Required request fields:
+
+- `roles` (non-empty list; must include a role granted `remediate:propose`, e.g. `security_engineer` or `appsec_lead`)
+- `repo`
+- `plan`
 
 ## OpenAPI-style schema references
 
-- [scan-request.schema.json](/Users/harshitaaa/Projects/DevSecKit/sdk/schemas/scan-request.schema.json)
-- [finding.schema.json](/Users/harshitaaa/Projects/DevSecKit/sdk/schemas/finding.schema.json)
-- [unified-risk.schema.json](/Users/harshitaaa/Projects/DevSecKit/sdk/schemas/unified-risk.schema.json)
+- [scan-request.schema.json](../sdk/schemas/scan-request.schema.json)
+- [finding.schema.json](../sdk/schemas/finding.schema.json)
+- [unified-risk.schema.json](../sdk/schemas/unified-risk.schema.json)
